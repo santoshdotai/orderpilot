@@ -1,0 +1,159 @@
+{
+  "name": "OrderPilot - Google Sheets Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "orderpilot-sheets-sync",
+        "responseMode": "responseNode"
+      },
+      "id": "SheetsSyncWebhook",
+      "name": "Sheets sync webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -280,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const entity = $json.body.entity;\nif (!entity) {\n  throw new Error('entity is required for sheet sync');\n}\nreturn [{ json: { ...$json.body, sheetName: entity === 'quotation' ? 'Quotations' : entity === 'invoice' ? 'Invoices' : entity === 'product' ? 'Products' : 'Orders' } }];"
+      },
+      "id": "ResolveSheetDestination",
+      "name": "Resolve sheet destination",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": "replace-with-google-sheet-id",
+        "sheetName": "={{$json.sheetName}}",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "entity": "={{$json.entity}}",
+            "entity_id": "={{$json.quotationId || $json.invoiceId || $json.productId || $json.orderId}}",
+            "payload": "={{JSON.stringify($json)}}"
+          }
+        }
+      },
+      "id": "GoogleSheetsSync",
+      "name": "Google Sheets append/update",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        240,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/sheet_sync_log",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"entity_name\": \"{{$json.entity}}\", \"entity_id\": null, \"sheet_name\": \"{{$json.sheetName}}\", \"direction\": \"push\", \"row_hash\": \"{{$json.payload || ''}}\"}"
+      },
+      "id": "WriteSheetSyncLog",
+      "name": "Write sheet sync log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        500,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\":\"synced\"}"
+      },
+      "id": "RespondSheetsWebhook",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        760,
+        140
+      ]
+    }
+  ],
+  "connections": {
+    "Sheets sync webhook": {
+      "main": [
+        [
+          {
+            "node": "Resolve sheet destination",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve sheet destination": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets append/update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets append/update": {
+      "main": [
+        [
+          {
+            "node": "Write sheet sync log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write sheet sync log": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "sheets-sync-v1"
+}

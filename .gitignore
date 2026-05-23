@@ -1,0 +1,16 @@
+node_modules
+.pnpm-store
+dist
+coverage
+*.tsbuildinfo
+.env
+.env.local
+.env.*.local
+.DS_Store
+.vercel
+.turbo
+apps/web/dist
+apps/web/node_modules
+supabase/.temp
+supabase/.branches
+n8n/.n8n

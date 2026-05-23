@@ -1,0 +1,331 @@
+{
+  "name": "OrderPilot - Quotation Approval and Send",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "orderpilot-approval-send",
+        "responseMode": "responseNode"
+      },
+      "id": "ApprovalWebhook",
+      "name": "Dashboard approval webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -520,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/quotations?id=eq.{{$json.body.quotationId}}&select=id,status,total,customer_id,customers(*),quotation_items(*,products(*))",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            }
+          ]
+        }
+      },
+      "id": "FetchQuotationBundle",
+      "name": "Fetch quotation bundle",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -260,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const quote = Array.isArray($json) ? $json[0] : $json;\nconst items = quote.quotation_items || [];\nconst lines = items.map((item) => `- ${item.products?.name || 'Item'} x ${item.qty} @ ${item.unit_price}`).join('\\n');\nconst message = `Your quotation is ready.\\n\\n${lines}\\n\\nTotal: INR ${quote.total}`;\nreturn [{ json: { quote, message } }];"
+      },
+      "id": "RenderQuoteMessage",
+      "name": "Render WhatsApp message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/functions/v1/invoice-engine",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_ANON_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"quotationId\": \"{{$json.quote.id}}\"}"
+      },
+      "id": "GenerateInvoice",
+      "name": "Generate invoice PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
+        "sendAuthentication": true,
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{$env.TWILIO_WHATSAPP_FROM}}"
+            },
+            {
+              "name": "To",
+              "value": "={{$json.quote.customers.whatsapp_phone}}"
+            },
+            {
+              "name": "Body",
+              "value": "={{$json.message}}"
+            }
+          ]
+        }
+      },
+      "id": "SendQuotation",
+      "name": "Send quotation via Twilio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
+        "sendAuthentication": true,
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{$env.TWILIO_WHATSAPP_FROM}}"
+            },
+            {
+              "name": "To",
+              "value": "={{$node['Render WhatsApp message'].json.quote.customers.whatsapp_phone}}"
+            },
+            {
+              "name": "Body",
+              "value": "=Invoice ready: {{$json.pdfUrl}}"
+            }
+          ]
+        }
+      },
+      "id": "SendInvoiceLink",
+      "name": "Send invoice link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/quotations?id=eq.{{$node['Render WhatsApp message'].json.quote.id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"status\": \"sent\"}"
+      },
+      "id": "UpdateQuotationStatus",
+      "name": "Update quotation sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.N8N_SHEETS_SYNC_WEBHOOK_URL}}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"entity\": \"quotation\", \"quotationId\": \"{{$node['Render WhatsApp message'].json.quote.id}}\", \"invoicePdfUrl\": \"{{$node['Generate invoice PDF'].json.pdfUrl}}\"}"
+      },
+      "id": "MirrorToSheets",
+      "name": "Mirror quotation and invoice to Sheets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\":\"sent\"}"
+      },
+      "id": "RespondApprovalWebhook",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Dashboard approval webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch quotation bundle",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch quotation bundle": {
+      "main": [
+        [
+          {
+            "node": "Render WhatsApp message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render WhatsApp message": {
+      "main": [
+        [
+          {
+            "node": "Generate invoice PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate invoice PDF": {
+      "main": [
+        [
+          {
+            "node": "Send quotation via Twilio",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send invoice link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send quotation via Twilio": {
+      "main": [
+        [
+          {
+            "node": "Update quotation sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send invoice link": {
+      "main": [
+        [
+          {
+            "node": "Update quotation sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update quotation sent": {
+      "main": [
+        [
+          {
+            "node": "Mirror quotation and invoice to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mirror quotation and invoice to Sheets": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "quotation-approval-v1"
+}

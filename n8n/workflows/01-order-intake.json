@@ -1,0 +1,436 @@
+{
+  "name": "OrderPilot - Order Intake",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "orderpilot-intake",
+        "responseMode": "responseNode"
+      },
+      "id": "WebhookOrderIntake",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -760,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.body.mediaUrl}}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "IfMediaExists",
+      "name": "IF mediaUrl exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        -520,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.OPENAI_API_KEY}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "file",
+              "value": "={{$json.body.mediaUrl}}"
+            },
+            {
+              "name": "model",
+              "value": "whisper-1"
+            }
+          ]
+        }
+      },
+      "id": "WhisperTranscription",
+      "name": "Whisper HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -260,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are an order-extraction assistant for a B2B WhatsApp seller. Return strict JSON with keys: products[{sku?, name, qty}], urgency (low|medium|high), delivery({address?, date?}).\\n\\nCustomer message:\\n\\\"\\\"\\\"\\n{{$json.transcript || $json.body.body}}\\n\\\"\\\"\\\"\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\"\n  }\n}"
+      },
+      "id": "GeminiExtraction",
+      "name": "Gemini Extraction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        20,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawText = $json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';\nconst payload = JSON.parse(rawText.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/```$/i, '').trim());\nreturn [{ json: { ...$json, extraction: payload } }];"
+      },
+      "id": "ParseExtractionJson",
+      "name": "Parse extraction JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/ai_extractions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"message_id\": \"{{$node['Webhook'].json.body.messageId}}\", \"products\": {{$json.extraction.products}}, \"urgency\": \"{{$json.extraction.urgency}}\", \"delivery\": {{$json.extraction.delivery}}, \"raw_response\": {{$json.extraction}}}"
+      },
+      "id": "InsertAiExtraction",
+      "name": "Supabase ai_extractions insert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const products = $json.extraction.products || [];\nconst lineItems = products.map((product, index) => ({\n  product_name: product.name,\n  qty: Number(product.qty || 1),\n  temp_id: index + 1,\n}));\nreturn [{ json: { ...$json, lineItems } }];"
+      },
+      "id": "PrepareDraftQuote",
+      "name": "Match products and build draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        760,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/rpc/create_orderpilot_quotation_draft",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"message_id\": \"{{$node['Webhook'].json.body.messageId}}\", \"line_items\": {{$json.lineItems}}}"
+      },
+      "id": "CreateQuotationDraft",
+      "name": "Create quotations row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1000,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
+        "sendAuthentication": true,
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{$env.TWILIO_WHATSAPP_FROM}}"
+            },
+            {
+              "name": "To",
+              "value": "={{$node['Webhook'].json.body.from}}"
+            },
+            {
+              "name": "Body",
+              "value": "Got your order, drafting a quote..."
+            }
+          ]
+        }
+      },
+      "id": "AckCustomer",
+      "name": "Twilio ack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1240,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 30,
+        "unit": "minutes"
+      },
+      "id": "WaitForApproval",
+      "name": "Wait 30 minutes",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1460,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/follow_ups",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"customer_id\": null, \"remind_at\": \"={{new Date().toISOString()}}\", \"reason\": \"Quotation awaiting approval\", \"done\": false}"
+      },
+      "id": "CreateFollowUp",
+      "name": "Create follow-up row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        40
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"status\":\"accepted\"}"
+      },
+      "id": "RespondToWebhook",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1680,
+        240
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "IF mediaUrl exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF mediaUrl exists": {
+      "main": [
+        [
+          {
+            "node": "Whisper HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gemini Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Whisper HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Gemini Extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Extraction": {
+      "main": [
+        [
+          {
+            "node": "Parse extraction JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse extraction JSON": {
+      "main": [
+        [
+          {
+            "node": "Supabase ai_extractions insert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase ai_extractions insert": {
+      "main": [
+        [
+          {
+            "node": "Match products and build draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match products and build draft": {
+      "main": [
+        [
+          {
+            "node": "Create quotations row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create quotations row": {
+      "main": [
+        [
+          {
+            "node": "Twilio ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Twilio ack": {
+      "main": [
+        [
+          {
+            "node": "Wait 30 minutes",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 30 minutes": {
+      "main": [
+        [
+          {
+            "node": "Create follow-up row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "order-intake-v1"
+}
