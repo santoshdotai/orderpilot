@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 
 import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
 import { SectionCard } from "../components/SectionCard";
 import { fetchCustomers } from "../lib/api";
+import { getErrorMessage } from "../lib/errors";
 import { formatDateTime } from "../lib/format";
 import type { Customer } from "../lib/types";
 
@@ -13,20 +15,21 @@ export function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadCustomers() {
-      try {
-        setLoading(true);
-        const nextCustomers = await fetchCustomers();
-        setCustomers(nextCustomers);
-        setError(null);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load customers.");
-      } finally {
-        setLoading(false);
-      }
+  async function loadCustomers() {
+    try {
+      setLoading(true);
+      const nextCustomers = await fetchCustomers();
+      setCustomers(nextCustomers);
+      setError(null);
+    } catch (loadError) {
+      console.error("Error:", loadError);
+      setError(getErrorMessage(loadError));
+    } finally {
+      setLoading(false);
     }
+  }
 
+  useEffect(() => {
     loadCustomers();
   }, []);
 
@@ -38,10 +41,9 @@ export function CustomersPage() {
         description="Customer records are created in Phase 3.2 when the Twilio webhook upserts `customers` before saving inbound messages."
       />
 
-      {loading ? <LoadingState label="Loading customer directory..." /> : null}
-      {error ? <div className="rounded-3xl border border-rose-400/30 bg-rose-400/10 px-5 py-4 text-sm text-rose-200">{error}</div> : null}
-
-      {!loading && !customers.length ? (
+      {loading && !customers.length ? <LoadingState label="Loading customer directory..." /> : null}
+      {error ? <ErrorState message={error} /> : null}
+      {!loading && !error && !customers.length ? (
         <EmptyState
           title="No customers yet"
           description="The customer list fills automatically as WhatsApp orders arrive through the Twilio Sandbox or production sender."

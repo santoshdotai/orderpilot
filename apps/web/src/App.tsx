@@ -11,6 +11,7 @@ import { CustomersPage } from "./pages/CustomersPage";
 import { ProductsPage } from "./pages/ProductsPage";
 import { FollowUpsPage } from "./pages/FollowUpsPage";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
+import { InvoicesPage } from "./pages/InvoicesPage";
 
 function ProtectedRoute({ session }: { session: Session | null }) {
   if (!session) {
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/quotations" element={<QuotationsPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/products" element={<ProductsPage />} />
+            <Route path="/invoices" element={<InvoicesPage />} />
             <Route path="/follow-ups" element={<FollowUpsPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
           </Route>

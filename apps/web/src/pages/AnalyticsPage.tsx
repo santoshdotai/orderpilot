@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 
+import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
 import { SectionCard } from "../components/SectionCard";
 import { StatCard } from "../components/StatCard";
 import { fetchAnalytics } from "../lib/api";
+import { getErrorMessage } from "../lib/errors";
 import { formatCurrency } from "../lib/format";
 import type { AnalyticsSnapshot } from "../lib/types";
 
@@ -21,7 +24,8 @@ export function AnalyticsPage() {
         setAnalytics(snapshot);
         setError(null);
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load analytics.");
+        console.error("Error:", loadError);
+        setError(getErrorMessage(loadError));
       } finally {
         setLoading(false);
       }
@@ -38,8 +42,11 @@ export function AnalyticsPage() {
         description="This screen ties back to the business goal in the Readme by measuring order capture, quotation throughput, revenue, and follow-up load."
       />
 
-      {loading ? <LoadingState label="Computing analytics snapshot..." /> : null}
-      {error ? <div className="rounded-3xl border border-rose-400/30 bg-rose-400/10 px-5 py-4 text-sm text-rose-200">{error}</div> : null}
+      {loading && !analytics ? <LoadingState label="Computing analytics snapshot..." /> : null}
+      {error ? <ErrorState message={error} /> : null}
+      {!loading && !error && !analytics ? (
+        <EmptyState title="No data yet" description="As messages, quotations, invoices, and payments land in Supabase, the sales snapshot will populate here." />
+      ) : null}
 
       {analytics ? (
         <>

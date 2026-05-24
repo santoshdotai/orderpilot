@@ -3,7 +3,7 @@ export type Customer = {
   whatsapp_phone: string;
   name: string | null;
   language: string | null;
-  segment?: string | null;
+  segment: string | null;
   created_at: string;
 };
 
@@ -75,7 +75,20 @@ export type FollowUp = {
   remind_at: string | null;
   reason: string | null;
   done: boolean;
-  created_at?: string;
+  created_at: string;
+  customer: Customer | null;
+};
+
+export type Invoice = {
+  id: string;
+  invoice_number: string | null;
+  customer_id: string | null;
+  total: number | null;
+  tax: number | null;
+  status: string | null;
+  due_date: string | null;
+  pdf_url: string | null;
+  created_at: string;
   customer: Customer | null;
 };
 

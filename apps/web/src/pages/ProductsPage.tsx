@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 
 import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
 import { SectionCard } from "../components/SectionCard";
 import { deleteProduct, fetchProducts, saveProduct } from "../lib/api";
+import { getErrorMessage } from "../lib/errors";
 import { formatCurrency } from "../lib/format";
 import type { Product } from "../lib/types";
 
@@ -29,7 +31,8 @@ export function ProductsPage() {
       setProducts(nextProducts);
       setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load products.");
+      console.error("Error:", loadError);
+      setError(getErrorMessage(loadError));
     } finally {
       setLoading(false);
     }
@@ -48,7 +51,8 @@ export function ProductsPage() {
       setDraft(EMPTY_PRODUCT);
       await loadProducts();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save product.");
+      console.error("Error:", saveError);
+      setError(getErrorMessage(saveError));
     } finally {
       setSaving(false);
     }
@@ -56,10 +60,12 @@ export function ProductsPage() {
 
   async function handleDelete(productId: string) {
     try {
+      setError(null);
       await deleteProduct(productId);
       await loadProducts();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete product.");
+      console.error("Error:", deleteError);
+      setError(getErrorMessage(deleteError));
     }
   }
 
@@ -71,7 +77,7 @@ export function ProductsPage() {
         description="The `products` table powers quotation pricing, fuzzy product matching in n8n, and the spreadsheet sync layer for non-technical sales teams."
       />
 
-      {error ? <div className="rounded-3xl border border-rose-400/30 bg-rose-400/10 px-5 py-4 text-sm text-rose-200">{error}</div> : null}
+      {error ? <ErrorState message={error} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <SectionCard title="Add product" eyebrow="Catalog editor">
@@ -132,7 +138,7 @@ export function ProductsPage() {
 
         <SectionCard title="Catalog inventory" eyebrow="Products table">
           {loading ? <LoadingState label="Loading products..." /> : null}
-          {!loading && !products.length ? (
+          {!loading && !error && !products.length ? (
             <EmptyState
               title="The catalog is empty"
               description="Seed a few SKUs first so the n8n workflow can match AI extracted product names against your editable catalog."

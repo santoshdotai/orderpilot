@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 
 import { EmptyState } from "../components/EmptyState";
+import { ErrorState } from "../components/ErrorState";
 import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { approveAndSendQuotation, fetchQuotations } from "../lib/api";
+import { getErrorMessage } from "../lib/errors";
 import { formatCurrency, formatDateTime } from "../lib/format";
 import type { Quotation } from "../lib/types";
 
@@ -14,6 +16,7 @@ export function QuotationsPage() {
   const [loading, setLoading] = useState(true);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   async function loadQuotations() {
     try {
@@ -22,7 +25,8 @@ export function QuotationsPage() {
       setQuotations(nextQuotations);
       setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load quotations.");
+      console.error("Error:", loadError);
+      setError(getErrorMessage(loadError));
     } finally {
       setLoading(false);
     }
@@ -36,10 +40,13 @@ export function QuotationsPage() {
     try {
       setSubmittingId(quotationId);
       setError(null);
+      setSuccessMessage(null);
       await approveAndSendQuotation(quotationId);
       await loadQuotations();
+      setSuccessMessage("Quotation approved and n8n automation triggered successfully.");
     } catch (approveError) {
-      setError(approveError instanceof Error ? approveError.message : "Failed to approve quotation.");
+      console.error("Error:", approveError);
+      setError(getErrorMessage(approveError));
     } finally {
       setSubmittingId(null);
     }
@@ -53,10 +60,14 @@ export function QuotationsPage() {
         description="Phase 5.3 and Phase 6.3 come together here: sales reps validate line items, approve quotations, and fire the n8n approval workflow."
       />
 
-      {loading ? <LoadingState label="Loading quotation drafts and line items..." /> : null}
-      {error ? <div className="rounded-3xl border border-rose-400/30 bg-rose-400/10 px-5 py-4 text-sm text-rose-200">{error}</div> : null}
-
-      {!loading && !quotations.length ? (
+      {loading && !quotations.length ? <LoadingState label="Loading quotation drafts and line items..." /> : null}
+      {successMessage ? (
+        <div className="rounded-3xl border border-mint/30 bg-mint/10 px-5 py-4 text-sm text-mint">
+          {successMessage}
+        </div>
+      ) : null}
+      {error ? <ErrorState message={error} /> : null}
+      {!loading && !error && !quotations.length ? (
         <EmptyState
           title="No quotation drafts yet"
           description="Send a WhatsApp order through the Twilio intake flow and let Phase 5.2 create the first draft quotation."
@@ -78,7 +89,7 @@ export function QuotationsPage() {
                   onClick={() => handleApprove(quotation.id)}
                   disabled={quotation.status !== "draft" || submittingId === quotation.id}
                 >
-                  {submittingId === quotation.id ? "Sending..." : "Approve & Send"}
+                  {submittingId === quotation.id ? "Approving..." : "Approve"}
                 </button>
               </div>
             }
@@ -92,8 +103,9 @@ export function QuotationsPage() {
                   </div>
                   <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
                     <p className="text-xs uppercase tracking-[0.24em] text-mist/55">Customer</p>
-                    <p className="mt-3 text-sm text-white">
-                      {quotation.customer?.name ?? quotation.customer?.whatsapp_phone ?? "Unknown"}
+                    <p className="mt-3 text-sm text-white">{quotation.customer?.name ?? "Unknown customer"}</p>
+                    <p className="mt-1 text-sm text-mist/70">
+                      {quotation.customer?.whatsapp_phone ?? "Phone not available"}
                     </p>
                   </div>
                 </div>
@@ -109,14 +121,22 @@ export function QuotationsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/10 bg-panel/40">
-                      {quotation.items.map((item) => (
-                        <tr key={item.id}>
-                          <td className="px-4 py-3 text-white">{item.product?.name ?? "Custom line item"}</td>
-                          <td className="px-4 py-3 text-mist/80">{item.qty}</td>
-                          <td className="px-4 py-3 text-mist/80">{formatCurrency(item.unit_price)}</td>
-                          <td className="px-4 py-3 text-white">{formatCurrency(item.qty * item.unit_price)}</td>
+                      {quotation.items.length ? (
+                        quotation.items.map((item) => (
+                          <tr key={item.id}>
+                            <td className="px-4 py-3 text-white">{item.product?.name ?? "Custom line item"}</td>
+                            <td className="px-4 py-3 text-mist/80">{item.qty}</td>
+                            <td className="px-4 py-3 text-mist/80">{formatCurrency(item.unit_price)}</td>
+                            <td className="px-4 py-3 text-white">{formatCurrency(item.qty * item.unit_price)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td className="px-4 py-3 text-mist/70" colSpan={4}>
+                            No quotation items yet
+                          </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
                 </div>
