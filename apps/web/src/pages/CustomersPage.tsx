@@ -54,7 +54,7 @@ export function CustomersPage() {
         {customers.map((customer) => (
           <SectionCard
             key={customer.id}
-            eyebrow={customer.segment ?? "unclassified"}
+            eyebrow={customer.language ?? "customer"}
             title={customer.name ?? customer.whatsapp_phone}
           >
             <div className="space-y-3 text-sm text-mist/78">

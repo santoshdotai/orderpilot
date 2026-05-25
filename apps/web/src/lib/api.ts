@@ -34,7 +34,7 @@ async function fetchCustomerMap(customerIds: Array<string | null | undefined>) {
 
   const { data, error } = await supabase
     .from("customers")
-    .select("id, whatsapp_phone, name, language, segment, created_at")
+    .select("id, whatsapp_phone, name, language, created_at")
     .in("id", ids);
 
   if (error) {
@@ -278,7 +278,7 @@ export async function approveAndSendQuotation(quotationId: string) {
 export async function fetchCustomers() {
   const { data, error } = await supabase
     .from("customers")
-    .select("id, whatsapp_phone, name, language, segment, created_at")
+    .select("id, whatsapp_phone, name, language, created_at")
     .order("created_at", { ascending: false });
 
   if (error) {

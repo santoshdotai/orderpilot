@@ -3,7 +3,6 @@ export type Customer = {
   whatsapp_phone: string;
   name: string | null;
   language: string | null;
-  segment: string | null;
   created_at: string;
 };
 
