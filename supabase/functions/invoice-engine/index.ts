@@ -14,7 +14,6 @@ function requiredEnv(name: string) {
   if (!value) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
-
   return value;
 }
 
@@ -34,16 +33,8 @@ type RawQuotationItem = {
   qty: number | string | null;
   unit_price: number | string | null;
   products:
-    | {
-      id: string;
-      sku: string | null;
-      name: string | null;
-    }
-    | Array<{
-      id: string;
-      sku: string | null;
-      name: string | null;
-    }>
+    | { id: string; sku: string | null; name: string | null; }
+    | Array<{ id: string; sku: string | null; name: string | null; }>
     | null;
 };
 
@@ -72,16 +63,8 @@ type RawQuotationRecord = {
   created_at: string;
   customer_id: string | null;
   customers:
-    | {
-      id: string;
-      name: string | null;
-      whatsapp_phone: string | null;
-    }
-    | Array<{
-      id: string;
-      name: string | null;
-      whatsapp_phone: string | null;
-    }>
+    | { id: string; name: string | null; whatsapp_phone: string | null; }
+    | Array<{ id: string; name: string | null; whatsapp_phone: string | null; }>
     | null;
   quotation_items: RawQuotationItem[] | null;
 };
@@ -96,10 +79,7 @@ type QuotationRecord = {
 };
 
 function firstRelation<T>(value: T | T[] | null | undefined): T | null {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
-  }
-
+  if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
 }
 
@@ -118,23 +98,21 @@ function formatMoney(value: number) {
 }
 
 function toNumber(value: number | string | null | undefined, fallback = 0) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
+  if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim() !== "") {
     const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
+    if (Number.isFinite(parsed)) return parsed;
   }
-
   return fallback;
+}
+
+// Strips emojis and non-ASCII characters so pdf-lib WinAnsi font can encode the text
+function sanitizeText(text: string): string {
+  return text.replace(/[^\x00-\x7F]/g, "").trim() || "?";
 }
 
 function normalizeQuotationRecord(raw: RawQuotationRecord): QuotationRecord {
   const items = Array.isArray(raw.quotation_items) ? raw.quotation_items : [];
-
   return {
     id: raw.id,
     total: toNumber(raw.total, 0),
@@ -144,15 +122,12 @@ function normalizeQuotationRecord(raw: RawQuotationRecord): QuotationRecord {
     quotation_items: items.map((item) => {
       const qty = toNumber(item.qty, Number.NaN);
       const unitPrice = toNumber(item.unit_price, Number.NaN);
-
       if (!Number.isFinite(qty) || qty <= 0) {
         throw new Error(`Quotation item ${item.id} has an invalid qty`);
       }
-
       if (!Number.isFinite(unitPrice) || unitPrice < 0) {
         throw new Error(`Quotation item ${item.id} has an invalid unit_price`);
       }
-
       return {
         id: item.id,
         qty,
@@ -176,34 +151,24 @@ async function buildInvoicePdf(
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
+  const customerLabel = sanitizeText(
+    quotation.customers?.name ?? quotation.customers?.whatsapp_phone ?? "Unknown"
+  );
+
   page.drawText("OrderPilot Invoice", {
-    x: 50,
-    y: 790,
-    size: 22,
-    font: boldFont,
+    x: 50, y: 790, size: 22, font: boldFont,
     color: rgb(0.11, 0.15, 0.28),
   });
-
   page.drawText(`Invoice No: ${invoiceNumber}`, { x: 50, y: 760, size: 12, font });
-  page.drawText(`Customer: ${quotation.customers?.name ?? quotation.customers?.whatsapp_phone ?? "Unknown"}`, {
-    x: 50,
-    y: 742,
-    size: 12,
-    font,
-  });
+  page.drawText(`Customer: ${customerLabel}`, { x: 50, y: 742, size: 12, font });
   page.drawText(`Created from quotation ${quotation.id}`, { x: 50, y: 724, size: 12, font });
-
-  page.drawText("Items", {
-    x: 50,
-    y: 690,
-    size: 14,
-    font: boldFont,
-  });
+  page.drawText("Items", { x: 50, y: 690, size: 14, font: boldFont });
 
   let y = 665;
   for (const item of items) {
     const lineTotal = item.qty * item.unit_price;
-    page.drawText(`${item.products?.name ?? "Custom item"} x ${item.qty}`, { x: 50, y, size: 11, font });
+    const productName = sanitizeText(item.products?.name ?? "Custom item");
+    page.drawText(`${productName} x ${item.qty}`, { x: 50, y, size: 11, font });
     page.drawText(formatMoney(item.unit_price), { x: 340, y, size: 11, font });
     page.drawText(formatMoney(lineTotal), { x: 460, y, size: 11, font });
     y -= 20;
@@ -211,10 +176,8 @@ async function buildInvoicePdf(
 
   y -= 12;
   page.drawLine({
-    start: { x: 50, y },
-    end: { x: 545, y },
-    thickness: 1,
-    color: rgb(0.8, 0.84, 0.9),
+    start: { x: 50, y }, end: { x: 545, y },
+    thickness: 1, color: rgb(0.8, 0.84, 0.9),
   });
   y -= 24;
 
@@ -256,19 +219,44 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const taxRate = rawTaxRate > 1 ? rawTaxRate / 100 : rawTaxRate;
 
+    // Check for existing invoice WITH pdf_url only
     const { data: existingInvoice, error: existingInvoiceError } = await supabase
       .from("invoices")
       .select("id, invoice_number, pdf_url, total, status")
       .eq("quotation_id", quotationId)
+      .not("pdf_url", "is", null)
       .maybeSingle();
 
     if (existingInvoiceError) {
       return jsonResponse(500, { error: existingInvoiceError.message });
     }
 
-    if (existingInvoice) {
-      return jsonResponse(200, existingInvoice);
+    if (existingInvoice?.pdf_url) {
+      return jsonResponse(200, {
+        invoiceId: existingInvoice.id,
+        invoiceNumber: existingInvoice.invoice_number,
+        pdfUrl: existingInvoice.pdf_url,
+        total: existingInvoice.total,
+        status: existingInvoice.status,
+      });
     }
+
+    // Delete any incomplete invoice for this quotation
+    await supabase
+      .from("invoice_items")
+      .delete()
+      .in("invoice_id",
+        (await supabase
+          .from("invoices")
+          .select("id")
+          .eq("quotation_id", quotationId)
+        ).data?.map((i: { id: string }) => i.id) ?? []
+      );
+
+    await supabase
+      .from("invoices")
+      .delete()
+      .eq("quotation_id", quotationId);
 
     const { data: quotation, error: quotationError } = await supabase
       .from("quotations")
@@ -277,7 +265,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         total,
         created_at,
         customer_id,
-        customers (
+        customers!quotations_customer_id_fkey (
           id,
           name,
           whatsapp_phone
@@ -286,7 +274,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           id,
           qty,
           unit_price,
-          products (
+          products!quotation_items_product_id_fkey (
             id,
             sku,
             name
@@ -297,7 +285,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .single();
 
     if (quotationError || !quotation) {
-      return jsonResponse(404, { error: "Quotation not found" });
+      return jsonResponse(404, {
+        error: "Quotation not found",
+        debug: {
+          quotationId,
+          errorMsg: quotationError?.message,
+          errorCode: quotationError?.code,
+        }
+      });
     }
 
     const quotationRecord = normalizeQuotationRecord(quotation as RawQuotationRecord);
@@ -358,7 +353,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const invoiceItemsPayload = items.map((item) => {
       const lineTotal = Number((item.qty * item.unit_price).toFixed(2));
       const lineTax = Number((lineTotal * taxRate).toFixed(2));
-
       return {
         invoice_id: invoice.id,
         product_id: item.products?.id ?? null,
@@ -370,13 +364,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
       };
     });
 
-    const { error: invoiceItemsError } = await supabase.from("invoice_items").insert(invoiceItemsPayload);
+    const { error: invoiceItemsError } = await supabase
+      .from("invoice_items")
+      .insert(invoiceItemsPayload);
+
     if (invoiceItemsError) {
       return jsonResponse(500, { error: invoiceItemsError.message });
     }
 
     const pdfBytes = await buildInvoicePdf(invoiceNumber, quotationRecord, items, subtotal, taxTotal, total);
     const filePath = `${invoice.id}.pdf`;
+
     const { error: uploadError } = await supabase.storage
       .from("invoices")
       .upload(filePath, pdfBytes, {
@@ -388,7 +386,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse(500, { error: uploadError.message });
     }
 
-    const { data: publicUrlData } = supabase.storage.from("invoices").getPublicUrl(filePath);
+    const { data: publicUrlData } = supabase.storage
+      .from("invoices")
+      .getPublicUrl(filePath);
 
     const { error: invoiceUpdateError } = await supabase
       .from("invoices")
@@ -399,7 +399,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse(500, { error: invoiceUpdateError.message });
     }
 
-    const { error: auditError } = await supabase.from("audit_log").insert({
+    await supabase.from("audit_log").insert({
       action: "invoice_generated",
       entity_type: "invoice",
       entity_id: invoice.id,
@@ -410,10 +410,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       },
     });
 
-    if (auditError) {
-      return jsonResponse(500, { error: auditError.message });
-    }
-
     return jsonResponse(200, {
       invoiceId: invoice.id,
       invoiceNumber,
@@ -421,6 +417,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       total,
       status: "draft",
     });
+
   } catch (error) {
     return jsonResponse(500, {
       error: error instanceof Error ? error.message : "Unexpected invoice engine error",
