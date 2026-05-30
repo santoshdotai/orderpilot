@@ -1,4 +1,6 @@
 node_modules
+.temp/
+auth_info_baileys/
 .pnpm-store
 dist
 coverage
