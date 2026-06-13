@@ -24,7 +24,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$env.SUPABASE_URL}}/rest/v1/follow_ups?done=is.false&select=id,customer_id,reason,remind_at,customers(whatsapp_phone,name)&remind_at=lte.{{new Date().toISOString()}}",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/follow_ups?done=is.false&customer_id=not.is.null&select=id,customer_id,reason,remind_at,customers!inner(whatsapp_phone,name)&remind_at=lte.{{new Date().toISOString()}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -85,7 +85,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\"to\": \"{{$json.customers.whatsapp_phone}}\", \"templateName\": \"{{$env.INTERAKT_FOLLOWUP_TEMPLATE_NAME || 'followup_regarding_case'}}\", \"bodyValues\": [\"{{$json.customers.name || 'Customer'}}\", \"{{$json.remind_at ? new Date($json.remind_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)}}\", \"{{$json.reason || 'We are waiting on your confirmation.'}}\"], \"customerId\": \"{{$json.customer_id}}\"}"
+        "jsonBody": "={{ JSON.stringify({ to: (Array.isArray($json.customers) ? $json.customers[0]?.whatsapp_phone : $json.customers?.whatsapp_phone) || '', templateName: $env.INTERAKT_FOLLOWUP_TEMPLATE_NAME || 'followup_regarding_case', bodyValues: [Array.isArray($json.customers) ? $json.customers[0]?.name || 'Customer' : $json.customers?.name || 'Customer', $json.remind_at ? new Date($json.remind_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10), $json.reason || 'We are waiting on your confirmation.'], customerId: $json.customer_id || '' }) }}"
       },
       "id": "SendReminder",
       "name": "Send follow-up via Interakt",
@@ -99,7 +99,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{$env.SUPABASE_URL}}/rest/v1/follow_ups?id=eq.{{$json.id}}",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/follow_ups?id=eq.{{$node['Loop follow-ups'].json.id}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

@@ -177,7 +177,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ entity: 'invoice', invoice: $json.invoice }) }}"
+        "jsonBody": "={{ JSON.stringify({ entity: 'invoice', invoice: $node['Build invoice template payload'].json.invoice }) }}"
       },
       "id": "MirrorToSheets",
       "name": "Mirror invoice to Sheets",

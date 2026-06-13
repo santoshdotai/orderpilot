@@ -226,7 +226,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\"to\": \"{{$node['Webhook'].json.body.from}}\", \"templateName\": \"{{$env.INTERAKT_ORDER_RECEIVED_TEMPLATE_NAME || 'order_received'}}\", \"bodyValues\": [\"{{$node['Webhook'].json.body.profileName || 'there'}}\"], \"customerId\": \"{{$node['Webhook'].json.body.customerId}}\"}"
+        "jsonBody": "={\"to\": \"{{$node['Webhook'].json.body.from}}\", \"templateName\": \"{{$env.INTERAKT_ORDER_RECEIVED_TEMPLATE_NAME || 'order_received'}}\", \"bodyValues\": [\"{{$node['Webhook'].json.body.profileName || 'there'}}\", \"{{$node['Match products and build draft'].json.lineItems && Array.isArray($node['Match products and build draft'].json.lineItems) ? $node['Match products and build draft'].json.lineItems.map((item) => (item.product_name || 'Item') + ' x ' + (item.qty || 1)).join(', ') : 'No items extracted'}}\", \"{{$node['Parse extraction JSON'].json.extraction && $node['Parse extraction JSON'].json.extraction.urgency ? $node['Parse extraction JSON'].json.extraction.urgency : 'medium'}}\", \"{{$node['Parse extraction JSON'].json.extraction && $node['Parse extraction JSON'].json.extraction.delivery ? [($node['Parse extraction JSON'].json.extraction.delivery.address || ''), ($node['Parse extraction JSON'].json.extraction.delivery.date || '')].filter(Boolean).join(' | ') || 'Delivery details pending' : 'Delivery details pending'}}\"], \"customerId\": \"{{$json.customer_id || $json.customerId || $node['Webhook'].json.body.customerId || ''}}\"}"
       },
       "id": "AckCustomer",
       "name": "Send order received",
@@ -275,7 +275,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\"customer_id\": \"{{$node['Webhook'].json.body.customerId}}\", \"remind_at\": \"={{new Date().toISOString()}}\", \"reason\": \"Quotation awaiting approval\", \"done\": false}"
+        "jsonBody": "={\"customer_id\": \"{{$node['Create quotations row'].json.customer_id || $node['Create quotations row'].json.customerId || $node['Webhook'].json.body.customerId || $node['Webhook'].json.body.customer_id || ''}}\", \"remind_at\": \"={{new Date().toISOString()}}\", \"reason\": \"Quotation awaiting approval\", \"done\": false}"
       },
       "id": "CreateFollowUp",
       "name": "Create follow-up row",

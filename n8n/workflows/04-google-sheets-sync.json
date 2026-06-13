@@ -18,7 +18,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body ?? {};\nconst invoice = body.invoice ?? body;\nif (!invoice || !invoice.id) {\n  throw new Error('invoice is required for sheet sync');\n}\nreturn [{ json: { entity: 'invoice', sheetName: 'Invoices', invoice } }];"
+        "jsCode": "const body = $json.body ?? $json ?? {};\n\nconst candidateInvoice =\n  (body.invoice && typeof body.invoice === 'object' ? body.invoice : null) ??\n  (body.data && typeof body.data === 'object' && body.data.invoice ? body.data.invoice : null) ??\n  (body.entity === 'invoice' ? body : null) ??\n  ($json.invoice && typeof $json.invoice === 'object' ? $json.invoice : null);\n\nconst invoice = candidateInvoice && typeof candidateInvoice === 'object' ? candidateInvoice : null;\n\nif (!invoice || !invoice.id) {\n  throw new Error(`invoice is required for sheet sync. Received keys: ${Object.keys(body).join(', ') || '(none)'}`);\n}\n\nreturn [{\n  json: {\n    entity: 'invoice',\n    sheetName: 'Invoices',\n    invoice: {\n      id: invoice.id,\n      invoice_number: invoice.invoice_number ?? '',\n      customer_id: invoice.customer_id ?? '',\n      total: invoice.total ?? 0,\n      tax: invoice.tax ?? 0,\n      status: invoice.status ?? 'draft',\n      due_date: invoice.due_date ?? '',\n      pdf_url: invoice.pdf_url ?? '',\n    },\n  },\n}];"
       },
       "id": "ResolveSheetDestination",
       "name": "Resolve sheet destination",
@@ -81,7 +81,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\"entity_name\": \"invoice\", \"entity_id\": \"{{$json.invoice.id}}\", \"sheet_name\": \"Invoices\", \"direction\": \"push\", \"row_hash\": \"{{JSON.stringify($json.invoice)}}\"}"
+        "jsonBody": "={{ JSON.stringify({ entity_name: 'invoice', entity_id: $json.id, sheet_name: 'Invoices', direction: 'push', row_hash: JSON.stringify($json) }) }}"
       },
       "id": "WriteSheetSyncLog",
       "name": "Write sheet sync log",
