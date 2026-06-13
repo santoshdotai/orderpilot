@@ -45,10 +45,10 @@
     },
     {
       "parameters": {
-        "jsCode": "const quote = Array.isArray($json) ? $json[0] : $json;\nconst items = quote.quotation_items || [];\nconst lines = items.map((item) => `- ${item.products?.name || 'Item'} x ${item.qty} @ ${item.unit_price}`).join('\\n');\nconst message = `Your quotation is ready.\\n\\n${lines}\\n\\nTotal: INR ${quote.total}`;\nreturn [{ json: { quote, message } }];"
+        "jsCode": "function parseJsonArray(value) {\n  if (Array.isArray(value)) {\n    return value;\n  }\n\n  if (typeof value === 'string') {\n    try {\n      const cleaned = value.startsWith('=') ? value.slice(1).trim() : value.trim();\n      const parsed = JSON.parse(cleaned);\n      return Array.isArray(parsed) ? parsed : [];\n    } catch {\n      return [];\n    }\n  }\n\n  return [];\n}\n\nconst quote = Array.isArray($json) ? $json[0] : $json;\nconst items = parseJsonArray(quote.quotation_items);\nconst lines = items.map((item) => `- ${item.products?.name || 'Item'} x ${item.qty} @ ${item.unit_price}`).join('\\n');\nconst message = `Your quotation is ready.\\n\\n${lines}\\n\\nTotal: INR ${quote.total}`;\nreturn [{ json: { quote, message } }];"
       },
       "id": "RenderQuoteMessage",
-      "name": "Render WhatsApp message",
+      "name": "Normalize quotation bundle",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -65,7 +65,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer {{$env.SUPABASE_ANON_KEY}}"
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
             },
             {
               "name": "Content-Type",
@@ -89,67 +89,45 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
-        "sendAuthentication": true,
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpBasicAuth",
-        "sendBody": true,
-        "contentType": "form-urlencoded",
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "From",
-              "value": "={{$env.TWILIO_WHATSAPP_FROM}}"
-            },
-            {
-              "name": "To",
-              "value": "={{$json.quote.customers.whatsapp_phone}}"
-            },
-            {
-              "name": "Body",
-              "value": "={{$json.message}}"
-            }
-          ]
-        }
+        "jsCode": "const invoiceResponse = $json;\nconst quote = $node['Normalize quotation bundle'].json.quote;\nconst customer = Array.isArray(quote.customers) ? quote.customers[0] : quote.customers;\n\nconst customerName = customer?.name || customer?.whatsapp_phone || 'Customer';\nconst phoneNumber = customer?.whatsapp_phone || '';\nconst customerId = customer?.id || quote.customer_id || '';\nconst invoiceTemplateName = (typeof process !== 'undefined' && process.env?.INTERAKT_INVOICE_READY_TEMPLATE_NAME) || 'invoice_ready';\n\nconst dueDate = new Date();\ndueDate.setDate(dueDate.getDate() + 7);\nconst dueDateText = dueDate.toISOString().slice(0, 10);\nconst invoiceNumber = invoiceResponse.invoiceNumber || '';\nconst total = Number(invoiceResponse.total ?? quote.total ?? 0);\nconst tax = Number(invoiceResponse.taxTotal ?? invoiceResponse.tax ?? 0);\nconst invoice = {\n  id: invoiceResponse.invoiceId || '',\n  invoice_number: invoiceNumber,\n  customer_id: customerId,\n  total,\n  tax,\n  status: invoiceResponse.status || 'draft',\n  due_date: dueDateText,\n  pdf_url: invoiceResponse.pdfUrl || '',\n};\n\nconst bodyValues = [\n  customerName,\n  invoiceNumber,\n  String(total),\n  dueDateText,\n  invoice.pdf_url,\n];\n\nreturn [{\n  json: {\n    ...invoiceResponse,\n    invoice,\n    to: phoneNumber,\n    customerId,\n    templateName: invoiceTemplateName,\n    bodyValues,\n  },\n}];"
       },
-      "id": "SendQuotation",
-      "name": "Send quotation via Twilio",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "id": "BuildInvoiceWhatsAppMessage",
+      "name": "Build invoice template payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
-        520,
-        40
+        260,
+        200
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
-        "sendAuthentication": true,
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpBasicAuth",
-        "sendBody": true,
-        "contentType": "form-urlencoded",
-        "bodyParameters": {
+        "url": "={{$env.SUPABASE_URL}}/functions/v1/send-whatsapp",
+        "sendHeaders": true,
+        "headerParameters": {
           "parameters": [
             {
-              "name": "From",
-              "value": "={{$env.TWILIO_WHATSAPP_FROM}}"
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
             },
             {
-              "name": "To",
-              "value": "={{$node['Render WhatsApp message'].json.quote.customers.whatsapp_phone}}"
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
             },
             {
-              "name": "Body",
-              "value": "=Invoice ready: {{$json.pdfUrl}}"
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
-        }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"to\": \"{{$json.to}}\", \"templateName\": \"{{$json.templateName}}\", \"bodyValues\": {{$json.bodyValues}}, \"customerId\": \"{{$json.customerId}}\"}"
       },
-      "id": "SendInvoiceLink",
-      "name": "Send invoice link",
+      "id": "SendQuotation",
+      "name": "Send invoice via Interakt",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -160,7 +138,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "={{$env.SUPABASE_URL}}/rest/v1/quotations?id=eq.{{$node['Render WhatsApp message'].json.quote.id}}",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/quotations?id=eq.{{$node['Normalize quotation bundle'].json.quote.id}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -199,10 +177,10 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\"entity\": \"quotation\", \"quotationId\": \"{{$node['Render WhatsApp message'].json.quote.id}}\", \"invoicePdfUrl\": \"{{$node['Generate invoice PDF'].json.pdfUrl}}\"}"
+        "jsonBody": "={{ JSON.stringify({ entity: 'invoice', invoice: $json.invoice }) }}"
       },
       "id": "MirrorToSheets",
-      "name": "Mirror quotation and invoice to Sheets",
+      "name": "Mirror invoice to Sheets",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -241,14 +219,14 @@
       "main": [
         [
           {
-            "node": "Render WhatsApp message",
+            "node": "Normalize quotation bundle",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Render WhatsApp message": {
+    "Normalize quotation bundle": {
       "main": [
         [
           {
@@ -263,30 +241,25 @@
       "main": [
         [
           {
-            "node": "Send quotation via Twilio",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Send invoice link",
+            "node": "Build invoice template payload",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send quotation via Twilio": {
+    "Build invoice template payload": {
       "main": [
         [
           {
-            "node": "Update quotation sent",
+            "node": "Send invoice via Interakt",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Send invoice link": {
+    "Send invoice via Interakt": {
       "main": [
         [
           {
@@ -301,14 +274,14 @@
       "main": [
         [
           {
-            "node": "Mirror quotation and invoice to Sheets",
+            "node": "Mirror invoice to Sheets",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Mirror quotation and invoice to Sheets": {
+    "Mirror invoice to Sheets": {
       "main": [
         [
           {

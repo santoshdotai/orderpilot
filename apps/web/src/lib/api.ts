@@ -1,6 +1,8 @@
 import { supabase } from "./supabase";
+import { parseJsonArray, safeArray } from "./arrays";
 import type {
   AIExtraction,
+  AIExtractionProduct,
   AnalyticsSnapshot,
   Customer,
   FollowUp,
@@ -9,6 +11,7 @@ import type {
   MessageRecord,
   Product,
   Quotation,
+  QuotationInvoice,
   QuotationItem,
 } from "./types";
 
@@ -22,7 +25,7 @@ function toNumber(value: unknown) {
 }
 
 function uniqueIds(values: Array<string | null | undefined>) {
-  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+  return [...new Set(safeArray<string | null | undefined>(values).filter((value): value is string => Boolean(value)))];
 }
 
 async function fetchCustomerMap(customerIds: Array<string | null | undefined>) {
@@ -41,7 +44,43 @@ async function fetchCustomerMap(customerIds: Array<string | null | undefined>) {
     throw error;
   }
 
-  return new Map((data ?? []).map((customer) => [customer.id, customer as Customer]));
+  return new Map(safeArray<Customer>(data).map((customer) => [customer.id, customer]));
+}
+
+async function fetchTranscriptionMap(messageIds: Array<string | null | undefined>) {
+  const ids = uniqueIds(messageIds);
+
+  if (!ids.length) {
+    return new Map<string, InboxMessage["transcription"]>();
+  }
+
+  const { data, error } = await supabase
+    .from("transcriptions")
+    .select("id, message_id, text, model, created_at")
+    .in("message_id", ids)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  const transcriptionMap = new Map<string, InboxMessage["transcription"]>();
+
+  safeArray<{
+    id: string;
+    message_id: string;
+    text: string | null;
+    model: string | null;
+    created_at: string;
+  }>(data).forEach((transcription) => {
+    if (transcriptionMap.has(transcription.message_id)) {
+      return;
+    }
+
+    transcriptionMap.set(transcription.message_id, transcription as InboxMessage["transcription"]);
+  });
+
+  return transcriptionMap;
 }
 
 async function fetchProductMap(productIds: Array<string | null | undefined>) {
@@ -61,13 +100,54 @@ async function fetchProductMap(productIds: Array<string | null | undefined>) {
   }
 
   return new Map(
-    (data ?? []).map((product) => [
+    safeArray<{
+      id: string;
+      sku: string | null;
+      name: string;
+      price: number | string | null;
+      stock: number | string | null;
+    }>(data).map((product) => [
       product.id,
       {
         ...product,
         price: toNumber(product.price),
         stock: toNumber(product.stock),
       } as Product,
+    ]),
+  );
+}
+
+async function fetchInvoiceMap(quotationIds: Array<string | null | undefined>) {
+  const ids = uniqueIds(quotationIds);
+
+  if (!ids.length) {
+    return new Map<string, QuotationInvoice>();
+  }
+
+  const { data, error } = await supabase
+    .from("invoices")
+    .select("id, quotation_id, invoice_number, total, pdf_url")
+    .in("quotation_id", ids);
+
+  if (error) {
+    throw error;
+  }
+
+  return new Map(
+    safeArray<{
+      id: string;
+      quotation_id: string;
+      invoice_number: string | null;
+      total: number | string | null;
+      pdf_url: string | null;
+    }>(data).map((invoice) => [
+      invoice.quotation_id,
+      {
+        id: invoice.id,
+        invoice_number: invoice.invoice_number,
+        total: toNumber(invoice.total),
+        pdf_url: invoice.pdf_url,
+      } satisfies QuotationInvoice,
     ]),
   );
 }
@@ -84,7 +164,13 @@ function mapQuotationItemsByQuotationId(
 ) {
   const itemsByQuotationId = new Map<string, QuotationItem[]>();
 
-  rows.forEach((row) => {
+  safeArray<{
+    id: string;
+    quotation_id: string;
+    product_id: string | null;
+    qty: number | string | null;
+    unit_price: number | string | null;
+  }>(rows).forEach((row) => {
     const item: QuotationItem = {
       id: row.id,
       quotation_id: row.quotation_id,
@@ -102,9 +188,19 @@ function mapQuotationItemsByQuotationId(
   return itemsByQuotationId;
 }
 
+type FollowUpRow = {
+  id: string;
+  customer_id: string | null;
+  remind_at: string | null;
+  reason: string | null;
+  done: boolean | null;
+};
+
 export async function enrichInboxMessages(rows: MessageRecord[]) {
-  const customerMap = await fetchCustomerMap(rows.map((row) => row.customer_id));
-  const messageIds = rows.map((row) => row.id);
+  const safeRows = safeArray<MessageRecord>(rows);
+  const customerMap = await fetchCustomerMap(safeRows.map((row) => row.customer_id));
+  const transcriptionMap = await fetchTranscriptionMap(safeRows.map((row) => row.id));
+  const messageIds = safeRows.map((row) => row.id);
 
   let extractionMap = new Map<string, InboxMessage["aiExtraction"]>();
 
@@ -121,7 +217,14 @@ export async function enrichInboxMessages(rows: MessageRecord[]) {
 
     extractionMap = new Map();
 
-    (extractions ?? []).forEach((extraction) => {
+    safeArray<{
+      id: string;
+      message_id: string;
+      products: unknown;
+      urgency: AIExtraction["urgency"];
+      delivery: AIExtraction["delivery"];
+      created_at: string;
+    }>(extractions).forEach((extraction) => {
       if (extractionMap.has(extraction.message_id)) {
         return;
       }
@@ -129,7 +232,7 @@ export async function enrichInboxMessages(rows: MessageRecord[]) {
       extractionMap.set(extraction.message_id, {
         id: extraction.id,
         message_id: extraction.message_id,
-        products: (extraction.products as AIExtraction["products"]) ?? null,
+        products: parseJsonArray<AIExtractionProduct>(extraction.products),
         urgency: (extraction.urgency as AIExtraction["urgency"]) ?? null,
         delivery: (extraction.delivery as AIExtraction["delivery"]) ?? null,
         raw_response: null,
@@ -138,10 +241,10 @@ export async function enrichInboxMessages(rows: MessageRecord[]) {
     });
   }
 
-  return rows.map((row) => ({
+  return safeRows.map((row) => ({
     ...row,
     customer: row.customer_id ? customerMap.get(row.customer_id) ?? null : null,
-    transcription: null,
+    transcription: transcriptionMap.get(row.id) ?? null,
     aiExtraction: extractionMap.get(row.id) ?? null,
   })) as InboxMessage[];
 }
@@ -157,7 +260,7 @@ export async function fetchInboxMessages() {
     throw error;
   }
 
-  const rows = ((data ?? []) as MessageRecord[]).map((row) => ({
+  const rows = safeArray<MessageRecord>(data).map((row) => ({
     ...row,
     twilio_sid: row.twilio_sid ?? null,
   }));
@@ -175,17 +278,18 @@ export async function fetchQuotations() {
     throw error;
   }
 
-  const quotationRows = (data ?? []) as Array<{
+  const quotationRows = safeArray<{
     id: string;
     customer_id: string | null;
     status: Quotation["status"];
     total: number | string | null;
     approved_by: string | null;
     created_at: string;
-  }>;
+  }>(data);
 
   const quotationIds = quotationRows.map((row) => row.id);
   const customerMap = await fetchCustomerMap(quotationRows.map((row) => row.customer_id));
+  const invoiceMap = await fetchInvoiceMap(quotationIds);
 
   let itemsByQuotationId = new Map<string, QuotationItem[]>();
 
@@ -199,13 +303,13 @@ export async function fetchQuotations() {
       throw itemsError;
     }
 
-    const items = (itemRows ?? []) as Array<{
+    const items = safeArray<{
       id: string;
       quotation_id: string;
       product_id: string | null;
       qty: number | string | null;
       unit_price: number | string | null;
-    }>;
+    }>(itemRows);
 
     const productMap = await fetchProductMap(items.map((item) => item.product_id));
     itemsByQuotationId = mapQuotationItemsByQuotationId(items, productMap);
@@ -223,11 +327,14 @@ export async function fetchQuotations() {
       created_at: row.created_at,
       customer: row.customer_id ? customerMap.get(row.customer_id) ?? null : null,
       items,
+      invoice: invoiceMap.get(row.id) ?? null,
     } satisfies Quotation;
   });
 }
 
-export async function approveAndSendQuotation(quotationId: string) {
+export async function approveAndSendQuotation(quotation: Quotation) {
+  const quotationId = quotation.id;
+
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
   if (userError) {
@@ -253,7 +360,15 @@ export async function approveAndSendQuotation(quotationId: string) {
   if (userId) {
     const { error: auditError } = await supabase
       .from("audit_log")
-      .insert({ user_id: userId, action: "quotation_approved", target_id: quotationId });
+      .insert({
+        actor_user_id: userId,
+        action: "quotation_approved",
+        entity_type: "quotation",
+        entity_id: quotationId,
+        payload: {
+          status: "approved",
+        },
+      });
 
     if (auditError) {
       throw auditError;
@@ -263,10 +378,18 @@ export async function approveAndSendQuotation(quotationId: string) {
   const approvalWebhook = import.meta.env.VITE_N8N_APPROVAL_WEBHOOK_URL;
 
   if (approvalWebhook) {
+    const payload = {
+      quotationId,
+      pdfUrl: quotation.invoice?.pdf_url ?? null,
+      invoiceId: quotation.invoice?.id ?? null,
+      invoiceNumber: quotation.invoice?.invoice_number ?? null,
+      total: quotation.total,
+    };
+
     const response = await fetch(approvalWebhook, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quotationId }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -285,7 +408,7 @@ export async function fetchCustomers() {
     throw error;
   }
 
-  return (data ?? []) as Customer[];
+  return safeArray<Customer>(data);
 }
 
 export async function fetchProducts() {
@@ -298,7 +421,13 @@ export async function fetchProducts() {
     throw error;
   }
 
-  return (data ?? []).map((product) => ({
+  return safeArray<{
+    id: string;
+    sku: string | null;
+    name: string;
+    price: number | string | null;
+    stock: number | string | null;
+  }>(data).map((product) => ({
     ...product,
     price: toNumber(product.price),
     stock: toNumber(product.stock),
@@ -341,21 +470,14 @@ export async function deleteProduct(productId: string) {
 export async function fetchFollowUps() {
   const { data, error } = await supabase
     .from("follow_ups")
-    .select("id, customer_id, remind_at, reason, done, created_at")
+    .select("id, customer_id, remind_at, reason, done")
     .order("remind_at", { ascending: true });
 
   if (error) {
-    throw error;
+    throw new Error(`Failed to fetch follow-ups: ${error.message}`);
   }
 
-  const followUpRows = (data ?? []) as Array<{
-    id: string;
-    customer_id: string | null;
-    remind_at: string | null;
-    reason: string | null;
-    done: boolean;
-    created_at: string;
-  }>;
+  const followUpRows = safeArray<FollowUpRow>(data);
 
   const customerMap = await fetchCustomerMap(followUpRows.map((row) => row.customer_id));
 
@@ -365,7 +487,6 @@ export async function fetchFollowUps() {
     remind_at: row.remind_at,
     reason: row.reason,
     done: Boolean(row.done),
-    created_at: row.created_at,
     customer: row.customer_id ? customerMap.get(row.customer_id) ?? null : null,
   })) as FollowUp[];
 }
@@ -396,14 +517,14 @@ export async function snoozeFollowUp(followUpId: string, hours = 24) {
 export async function fetchInvoices() {
   const { data, error } = await supabase
     .from("invoices")
-    .select("id, invoice_number, customer_id, total, tax, status, due_date, pdf_url, created_at")
+    .select("id, invoice_number, customer_id, total, tax:tax_total, status, due_date, pdf_url, created_at")
     .order("created_at", { ascending: false });
 
   if (error) {
     throw error;
   }
 
-  const invoiceRows = (data ?? []) as Array<{
+  const invoiceRows = safeArray<{
     id: string;
     invoice_number: string | null;
     customer_id: string | null;
@@ -413,7 +534,7 @@ export async function fetchInvoices() {
     due_date: string | null;
     pdf_url: string | null;
     created_at: string;
-  }>;
+  }>(data);
 
   const customerMap = await fetchCustomerMap(invoiceRows.map((row) => row.customer_id));
 
@@ -466,11 +587,15 @@ export async function fetchAnalytics(): Promise<AnalyticsSnapshot> {
     throw paymentsError;
   }
 
-  const messageRows = messages ?? [];
-  const quotationRows = quotations ?? [];
-  const followUpRows = followUps ?? [];
-  const invoiceRows = invoices ?? [];
-  const paymentRows = payments ?? [];
+  const messageRows = safeArray<{ direction: string }>(messages);
+  const quotationRows = safeArray<{ status: Quotation["status"] }>(quotations);
+  const followUpRows = safeArray<{ done: boolean }>(followUps);
+  const invoiceRows = safeArray<{
+    total: number | string | null;
+    status: string | null;
+    due_date: string | null;
+  }>(invoices);
+  const paymentRows = safeArray<{ amount: number | string | null }>(payments);
 
   return {
     inboundMessages: messageRows.filter((item) => item.direction === "in").length,

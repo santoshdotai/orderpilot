@@ -9,8 +9,8 @@ OrderPilot helps businesses handle incoming customer orders from WhatsApp text a
 ## Core Workflow
 
 1. Customer sends a WhatsApp message or voice note.
-2. Twilio WhatsApp API receives the message.
-3. Twilio webhook forwards the message data to the OrderPilot AI backend.
+2. Interakt WhatsApp Business API receives the message.
+3. Interakt webhook forwards the message data to the OrderPilot AI backend.
 4. The message is stored in the Supabase database.
 5. If the customer sends a voice note, the audio is transcribed.
 6. Gemini AI or OpenAI processes the message.
@@ -22,7 +22,16 @@ OrderPilot helps businesses handle incoming customer orders from WhatsApp text a
 
 ## Message Flow
 
-`Customer WhatsApp Message -> Twilio WhatsApp API -> OrderPilot AI Backend -> Supabase Database -> Gemini AI / OpenAI -> n8n Automation -> Quotation / Reply Sent via Twilio WhatsApp`
+`Customer WhatsApp Message -> Interakt WhatsApp Business API -> OrderPilot AI Backend -> Supabase Database -> Gemini AI / OpenAI -> n8n Automation -> Quotation / Reply Sent via Interakt WhatsApp`
+
+## WhatsApp Architecture
+
+OrderPilot now uses the Interakt WhatsApp Business API for all messaging. There is no local Baileys session or WhatsApp socket to run on this machine.
+
+- Inbound messages flow from Interakt webhook to the Supabase Edge Function `interakt-webhook`, which stores the message and voice-note transcript, then into n8n.
+- Outbound replies flow from n8n to the Supabase Edge Function `send-whatsapp`, then to Interakt, and finally to the customer.
+- The local root server is only a lightweight health check placeholder.
+- Set the Interakt incoming webhook to `https://<your-project>.supabase.co/functions/v1/interakt-webhook`.
 
 ## Use Case
 
@@ -50,7 +59,7 @@ OrderPilot helps businesses handle incoming customer orders from WhatsApp text a
 
 ### WhatsApp Integration
 
-- Twilio WhatsApp API
+- Interakt WhatsApp Business API
 
 ### AI Layer
 

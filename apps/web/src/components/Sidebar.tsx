@@ -1,5 +1,7 @@
 import { NavLink } from "react-router-dom";
 
+import { safeArray } from "../lib/arrays";
+
 const links = [
   { to: "/inbox", label: "Inbox" },
   { to: "/quotations", label: "Quotations" },
@@ -9,6 +11,8 @@ const links = [
   { to: "/follow-ups", label: "Follow-ups" },
   { to: "/analytics", label: "Analytics" },
 ];
+
+const navigationLinks = safeArray<(typeof links)[number]>(links);
 
 export function Sidebar() {
   return (
@@ -22,7 +26,7 @@ export function Sidebar() {
       </div>
 
       <nav className="mt-8 space-y-2">
-        {links.map((link) => (
+        {navigationLinks.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}
@@ -41,7 +45,7 @@ export function Sidebar() {
       <div className="mt-auto rounded-3xl border border-coral/20 bg-coral/10 p-5">
         <p className="text-xs uppercase tracking-[0.28em] text-coral">System Flow</p>
         <p className="mt-3 text-sm leading-7 text-mist/85">
-          WhatsApp to Twilio, then Supabase Edge Functions, AI, n8n, and finally the dashboard.
+          WhatsApp to Interakt, then Supabase Edge Functions, AI, n8n, and finally the dashboard.
         </p>
       </div>
     </aside>

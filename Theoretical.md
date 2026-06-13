@@ -13,7 +13,7 @@
 - [Tech Stack](#tech-stack)
 - [Database Schema](#database-schema)
 - [n8n Workflows](#n8n-workflows)
-- [Twilio WhatsApp Integration](#twilio-whatsapp-integration)
+- [Interakt WhatsApp Integration](#interakt-whatsapp-integration)
 - [Supabase Edge Functions](#supabase-edge-functions)
 - [Google Sheets Sync](#google-sheets-sync)
 - [How to Run](#how-to-run)
@@ -42,12 +42,12 @@ OrderPilot is an **AI-powered WhatsApp Sales & Order Management Platform** built
 Customer sends WhatsApp message or voice note
               │
               ▼
-     Twilio WhatsApp API
+     Interakt WhatsApp Business API
               │
         Webhook (HTTPS)
               │
               ▼
-  Supabase Edge Function (twilio-webhook)
+  Supabase Edge Function (interakt-webhook)
      • Upserts customer record
      • Saves inbound message to DB
      • Forwards payload to n8n
@@ -59,7 +59,7 @@ Customer sends WhatsApp message or voice note
      • Parses: products, quantities, urgency, delivery
      • Creates quotation draft + line items
      • Prices against products catalog
-     • Sends quotation summary reply via Twilio
+     • Sends quotation summary reply via Interakt
      • Creates follow-up reminder row
               │
               ▼
@@ -73,7 +73,7 @@ Customer sends WhatsApp message or voice note
      • Fetches quotation + customer data
      • Triggers PDF generation Edge Function
      • Stores PDF in Supabase Storage
-     • Sends invoice PDF link via Twilio WhatsApp
+     • Sends invoice PDF link via Interakt WhatsApp
      • Updates quotation status → invoiced
      • Syncs invoice row to Google Sheets
               │
@@ -100,7 +100,7 @@ Customer sends WhatsApp message or voice note
 
 ### Customers
 ![Customers](./screenshots/customer_detail.png)
-> Customer records are auto-created when Twilio webhook upserts the `customers` table on first message.
+> Customer records are auto-created when the Interakt webhook upserts the `customers` table on first message.
 
 ### Products — Catalog Editor
 ![Products](./screenshots/products.png)
@@ -132,7 +132,7 @@ Customer sends WhatsApp message or voice note
 
 ```
 +----------------------+        +----------------------+
-|   WhatsApp Customer  | <----> |   Twilio WhatsApp    |
+|   WhatsApp Customer  | <----> |   Interakt WhatsApp   |
 +----------------------+        +----------------------+
                                          │
                                   Webhook (HTTPS)
@@ -140,7 +140,7 @@ Customer sends WhatsApp message or voice note
                                          ▼
                                 +--------------------+
                                 |  Supabase Edge Fn  |
-                                |  (twilio-webhook)  |
+                                | (interakt-webhook) |
                                 +--------------------+
                                          │
                         +----------------+----------------+
@@ -164,7 +164,7 @@ Customer sends WhatsApp message or voice note
         │            │          │                    │            │
         ▼            ▼          ▼                    ▼            ▼
 +------------+ +----------+ +----------+    +----------+ +----------+
-| Twilio     | | Invoice  | | Google   |    | Follow-up| | React +  |
+| Interakt   | | Invoice  | | Google   |    | Follow-up| | React +  |
 | (reply +   | | Engine   | | Sheets   |    | Scheduler| | Tailwind |
 |  invoice)  | | Edge Fn  | | 2-way    |    | Every    | | Dashboard|
 |            | | PDF →    | | sync     |    | 15 min   | | (Vercel) |
@@ -183,7 +183,7 @@ Customer sends WhatsApp message or voice note
 | **Frontend** | React + Vite + Tailwind CSS | Sales dashboard UI |
 | **Backend / DB** | Supabase (PostgreSQL) | Database, Auth, Storage, Edge Functions |
 | **Auth** | Supabase Auth + RLS | JWT auth; row-level security for multi-tenant data |
-| **WhatsApp** | Twilio WhatsApp Business API | Inbound/outbound WhatsApp messaging |
+| **WhatsApp** | Interakt WhatsApp Business API | Inbound/outbound WhatsApp messaging |
 | **AI Extraction** | Google Gemini (primary) | Product, quantity, urgency extraction from messages |
 | **Voice Transcription** | OpenAI Whisper API | Voice note → text transcription |
 | **Automation** | n8n Cloud | Workflow orchestration across all services |
@@ -226,7 +226,7 @@ All tables are protected by **Row Level Security (RLS)** in Supabase.
 ![Workflow 1](./screenshots/workflow1.png)
 
 **Nodes:**
-1. **Webhook** — Receives payload from `twilio-webhook` Edge Function
+1. **Webhook** — Receives payload from `interakt-webhook` Edge Function
 2. **Check Voice Note** — Routes to Whisper if media, else direct to Gemini
 3. **Whisper Transcription** — Transcribes voice notes via OpenAI API
 4. **Gemini AI Extraction** — Extracts products, quantities, urgency, delivery
@@ -239,7 +239,7 @@ All tables are protected by **Row Level Security (RLS)** in Supabase.
 11. **Insert Quotation Items** — Saves line items to Supabase
 12. **Update Quotation Total** — Updates final total on quotation
 13. **Create/Update Customer** — Upserts customer record
-14. **HTTP Request** — Sends quotation summary reply via Twilio
+14. **HTTP Request** — Sends quotation summary reply via Interakt
 15. **Create Follow Up** — Creates follow-up reminder row
 
 ---
@@ -252,9 +252,9 @@ All tables are protected by **Row Level Security (RLS)** in Supabase.
 2. **Fetch Quotation** — Gets full quotation data from Supabase
 3. **Get a Row** — Fetches customer details
 4. **Trigger PDF Generation** — Calls Supabase Edge Function to render PDF
-5. **Prepare WhatsApp Data** — Builds Twilio message payload
+5. **Prepare WhatsApp Data** — Builds Interakt template payload
 6. **Code in JavaScript** — Formats invoice message with template variables
-7. **HTTP Request** — Sends invoice PDF link via Twilio WhatsApp
+7. **HTTP Request** — Sends invoice PDF link via Interakt WhatsApp
 8. **Update Quotation Status** — Marks quotation as invoiced
 9. **Sync to Invoices Sheet** — Appends/updates invoice row in Google Sheets
 
@@ -268,36 +268,36 @@ All tables are protected by **Row Level Security (RLS)** in Supabase.
 2. **Get Pending Follow-ups** — Fetches overdue follow-up rows from Supabase
 3. **Any Results?** — If/else branch: skip if no pending items
 4. **Get a Row** — Fetches customer details for each follow-up
-5. **Send WhatsApp Nudge** — Sends reminder message via Twilio
+5. **Send WhatsApp Nudge** — Sends reminder message via Interakt
 6. **Mark Follow-up Done** — Updates follow-up status in Supabase
 
 ---
 
-## Twilio WhatsApp Integration
+## Interakt WhatsApp Integration
 
-### Incoming Messages (Twilio Monitor)
-![Twilio Receive Messages](./screenshots/twilio_recieve_massage.png)
+### Incoming Messages (Interakt Monitor)
+![Interakt Receive Messages](./screenshots/twilio_recieve_massage.png)
 
-All inbound WhatsApp messages from customers are logged in Twilio Monitor with direction, status, and message SID.
+All inbound WhatsApp messages from customers are logged in Interakt Monitor with direction, status, and message SID.
 
 ### WhatsApp Content Template
-![Twilio Content Template](./screenshots/whatsapp_content_templete_.png)
+![Interakt Content Template](./screenshots/whatsapp_content_templete_.png)
 
 The `orderpilot_invoice_ready` template is used for business-initiated invoice delivery messages. It includes dynamic variables for customer name, invoice number, total, due date, and PDF link.
 
-### Sandbox Testing
-![Twilio Sandbox](./screenshots/join_page_for_sending_massage.png)
+### Sender Testing
+![Interakt Sender](./screenshots/join_page_for_sending_massage.png)
 
-During development, the Twilio WhatsApp Sandbox (`+1 415 523 8886`) allows testing without a fully approved WhatsApp Business Account.
+During development, the Interakt WhatsApp sender allows testing without a fully approved WhatsApp Business Account.
 
 ---
 
 ## Supabase Edge Functions
 
-### `twilio-webhook`
-Receives all inbound WhatsApp messages from Twilio. Responsible for:
+### `interakt-webhook`
+Receives all inbound WhatsApp messages from Interakt. Responsible for:
 - Upserting the customer record (by `whatsapp_phone`)
-- Deduplicating messages by `twilio_sid`
+- Deduplicating messages by `twilio_sid` (Interakt message id)
 - Storing the inbound message in the `messages` table
 - Forwarding the payload to n8n for AI processing
 
@@ -338,7 +338,7 @@ The Google Sheets integration gives non-technical sales and finance teams full v
 - Node.js 18+
 - Supabase CLI
 - n8n Cloud account (or self-hosted)
-- Twilio account with WhatsApp Business sender approved
+- Interakt WhatsApp Business sender approved
 - Google Cloud project with Sheets API enabled
 
 ### 1. Clone the Repository
@@ -361,7 +361,7 @@ supabase db push
 
 ### 4. Deploy Edge Functions
 ```bash
-supabase functions deploy twilio-webhook
+supabase functions deploy interakt-webhook
 supabase functions deploy send-whatsapp
 supabase functions deploy generate-invoice-pdf
 ```
@@ -369,10 +369,10 @@ supabase functions deploy generate-invoice-pdf
 ### 5. Configure Environment Variables
 Copy `.env.example` to `.env` and fill in all values (see below).
 
-### 6. Set Twilio Webhook URL
-In Twilio → Messaging → WhatsApp Senders → Edit Sender:
+### 6. Set Interakt Webhook URL
+In Interakt → WhatsApp sender settings:
 ```
-Webhook URL: https://ouidhjemurwpcftrobbg.supabase.co/functions/v1/twilio-webhook
+Webhook URL: https://ouidhjemurwpcftrobbg.supabase.co/functions/v1/interakt-webhook
 ```
 
 ### 7. Import n8n Workflows
@@ -393,10 +393,8 @@ VITE_SUPABASE_URL=https://ouidhjemurwpcftrobbg.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
-# Twilio
-TWILIO_ACCOUNT_SID=your_account_sid
-TWILIO_AUTH_TOKEN=your_auth_token
-TWILIO_WHATSAPP_FROM=whatsapp:+919631692205
+# Interakt
+INTERAKT_API_KEY=your_interakt_api_key
 
 # AI
 GEMINI_API_KEY=your_gemini_api_key
@@ -431,7 +429,7 @@ orderpilot/
 │       └── supabase.ts
 ├── supabase/
 │   ├── functions/
-│   │   ├── twilio-webhook/
+│   │   ├── interakt-webhook/
 │   │   ├── send-whatsapp/
 │   │   └── generate-invoice-pdf/
 │   └── migrations/
@@ -460,4 +458,4 @@ It automates the full sales lifecycle:
 
 ---
 
-*Built with Supabase · Twilio · n8n · Gemini AI · React · Google Sheets*
+*Built with Supabase · Interakt · n8n · Gemini AI · React · Google Sheets*

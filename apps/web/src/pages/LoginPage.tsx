@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { useNavigate } from "react-router-dom";
 
+import { safeArray } from "../lib/arrays";
 import { supabase } from "../lib/supabase";
+
+const featureCards = safeArray<string>([
+  "Capture every order from WhatsApp in real time",
+  "Draft quotations automatically from AI extractions",
+  "Trigger invoices and reminders through n8n workflows",
+]);
 
 export function LoginPage({ session }: { session: Session | null }) {
   const navigate = useNavigate();
@@ -51,11 +58,7 @@ export function LoginPage({ session }: { session: Session | null }) {
           </p>
 
           <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {[
-              "Capture every order from WhatsApp in real time",
-              "Draft quotations automatically from AI extractions",
-              "Trigger invoices and reminders through n8n workflows",
-            ].map((item) => (
+            {featureCards.map((item) => (
               <div key={item} className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm leading-7 text-mist/80">
                 {item}
               </div>

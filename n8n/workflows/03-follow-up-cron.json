@@ -64,31 +64,31 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
-        "sendAuthentication": true,
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpBasicAuth",
-        "sendBody": true,
-        "contentType": "form-urlencoded",
-        "bodyParameters": {
+        "url": "={{$env.SUPABASE_URL}}/functions/v1/send-whatsapp",
+        "sendHeaders": true,
+        "headerParameters": {
           "parameters": [
             {
-              "name": "From",
-              "value": "={{$env.TWILIO_WHATSAPP_FROM}}"
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
             },
             {
-              "name": "To",
-              "value": "={{$json.customers.whatsapp_phone}}"
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
             },
             {
-              "name": "Body",
-              "value": "=Friendly reminder from OrderPilot: {{$json.reason || 'we are waiting on your confirmation.'}}"
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
-        }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"to\": \"{{$json.customers.whatsapp_phone}}\", \"templateName\": \"{{$env.INTERAKT_FOLLOWUP_TEMPLATE_NAME || 'followup_regarding_case'}}\", \"bodyValues\": [\"{{$json.customers.name || 'Customer'}}\", \"{{$json.remind_at ? new Date($json.remind_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)}}\", \"{{$json.reason || 'We are waiting on your confirmation.'}}\"], \"customerId\": \"{{$json.customer_id}}\"}"
       },
       "id": "SendReminder",
-      "name": "Send reminder",
+      "name": "Send follow-up via Interakt",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -159,7 +159,7 @@
       "main": [
         [
           {
-            "node": "Send reminder",
+            "node": "Send follow-up via Interakt",
             "type": "main",
             "index": 0
           }
@@ -167,7 +167,7 @@
         []
       ]
     },
-    "Send reminder": {
+    "Send follow-up via Interakt": {
       "main": [
         [
           {

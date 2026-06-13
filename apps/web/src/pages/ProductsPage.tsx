@@ -6,6 +6,7 @@ import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
 import { SectionCard } from "../components/SectionCard";
 import { deleteProduct, fetchProducts, saveProduct } from "../lib/api";
+import { safeArray } from "../lib/arrays";
 import { getErrorMessage } from "../lib/errors";
 import { formatCurrency } from "../lib/format";
 import type { Product } from "../lib/types";
@@ -23,6 +24,7 @@ export function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const visibleProducts = safeArray<Product>(products);
 
   async function loadProducts() {
     try {
@@ -138,7 +140,7 @@ export function ProductsPage() {
 
         <SectionCard title="Catalog inventory" eyebrow="Products table">
           {loading ? <LoadingState label="Loading products..." /> : null}
-          {!loading && !error && !products.length ? (
+          {!loading && !error && !visibleProducts.length ? (
             <EmptyState
               title="The catalog is empty"
               description="Seed a few SKUs first so the n8n workflow can match AI extracted product names against your editable catalog."
@@ -146,7 +148,7 @@ export function ProductsPage() {
           ) : null}
 
           <div className="grid gap-3">
-            {products.map((product) => (
+            {visibleProducts.map((product) => (
               <div key={product.id} className="rounded-3xl border border-white/10 bg-white/5 p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>

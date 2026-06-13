@@ -7,6 +7,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { fetchFollowUps, markFollowUpDone, snoozeFollowUp } from "../lib/api";
+import { safeArray } from "../lib/arrays";
 import { getErrorMessage } from "../lib/errors";
 import { formatDateTime, formatRelativeMinutes } from "../lib/format";
 import type { FollowUp } from "../lib/types";
@@ -17,6 +18,7 @@ export function FollowUpsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"done" | "snooze" | null>(null);
+  const visibleFollowUps = safeArray<FollowUp>(followUps);
 
   async function loadFollowUps() {
     try {
@@ -76,9 +78,9 @@ export function FollowUpsPage() {
         description="Follow-up rows are created by Phase 5.2 step 9 and worked through here, with manual snooze and done actions for the sales team."
       />
 
-      {loading && !followUps.length ? <LoadingState label="Loading follow-up reminders..." /> : null}
+      {loading && !visibleFollowUps.length ? <LoadingState label="Loading follow-up reminders..." /> : null}
       {error ? <ErrorState message={error} /> : null}
-      {!loading && !error && !followUps.length ? (
+      {!loading && !error && !visibleFollowUps.length ? (
         <EmptyState
           title="No follow-ups are scheduled"
           description="Once the approval timeout or payment reminder logic runs, reminders created in `follow_ups` will show up here."
@@ -86,7 +88,7 @@ export function FollowUpsPage() {
       ) : null}
 
       <div className="grid gap-4">
-        {followUps.map((followUp) => (
+        {visibleFollowUps.map((followUp) => (
           <SectionCard
             key={followUp.id}
             eyebrow={followUp.customer?.name ?? followUp.customer?.whatsapp_phone ?? "Unknown customer"}

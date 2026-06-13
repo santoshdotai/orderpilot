@@ -9,23 +9,32 @@ import { StatusBadge } from "../components/StatusBadge";
 import { enrichInboxMessages, fetchInboxMessages } from "../lib/api";
 import { getErrorMessage } from "../lib/errors";
 import { formatDateTime } from "../lib/format";
+import { parseJsonArray, safeArray } from "../lib/arrays";
 import { supabase } from "../lib/supabase";
-import type { InboxMessage, MessageRecord } from "../lib/types";
+import type { AIExtractionProduct, InboxMessage, MessageRecord } from "../lib/types";
 
 function renderProducts(message: InboxMessage) {
-  const products = message.aiExtraction?.products ?? [];
+  const products = parseJsonArray<AIExtractionProduct>(message.aiExtraction?.products);
 
-  if (!products.length) {
-    return "Awaiting AI extraction";
+  if (!Array.isArray(products) || products.length === 0) {
+    return <span className="text-mist/60">No products</span>;
   }
 
-  return products.map((product) => `${product.name} x ${product.qty}`).join(", ");
+  return products
+    .map((product) => {
+      const name = typeof product.name === "string" && product.name.trim() ? product.name : "Unknown product";
+      const qty = Number(product.qty ?? 0);
+
+      return `${name} x ${Number.isFinite(qty) ? qty : 0}`;
+    })
+    .join(", ");
 }
 
 export function InboxPage() {
   const [messages, setMessages] = useState<InboxMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const visibleMessages = safeArray<InboxMessage>(messages);
 
   useEffect(() => {
     let mounted = true;
@@ -66,7 +75,7 @@ export function InboxPage() {
             }
 
             setMessages((current) => {
-              const filtered = current.filter((message) => message.id !== nextMessage.id);
+              const filtered = safeArray<InboxMessage>(current).filter((message) => message.id !== nextMessage.id);
               return [nextMessage, ...filtered].slice(0, 50);
             });
           } catch (subscriptionError) {
@@ -90,17 +99,17 @@ export function InboxPage() {
         description="Phase 6.3 inbox view for inbound messages, voice-note transcripts, and AI extraction status across the intake pipeline."
       />
 
-      {loading && !messages.length ? <LoadingState label="Pulling the latest WhatsApp messages from Supabase..." /> : null}
+      {loading && !visibleMessages.length ? <LoadingState label="Pulling the latest WhatsApp messages from Supabase..." /> : null}
       {error ? <ErrorState message={error} /> : null}
-      {!loading && !error && !messages.length ? (
+      {!loading && !error && !visibleMessages.length ? (
         <EmptyState
           title="No inbound orders yet"
-          description="Complete Phase 3 and Phase 5, then send a WhatsApp message to the Twilio Sandbox to populate the inbox."
+          description="Complete Phase 3 and Phase 5, then send a WhatsApp message through Interakt to populate the inbox."
         />
       ) : null}
 
       <div className="grid gap-4">
-        {messages.map((message) => (
+        {visibleMessages.map((message) => (
           <SectionCard
             key={message.id}
             eyebrow={message.customer?.name ?? message.customer?.whatsapp_phone ?? "Unknown customer"}
@@ -127,7 +136,7 @@ export function InboxPage() {
                 <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs uppercase tracking-[0.24em] text-mist/55">Transcript</p>
                   <p className="mt-3 text-sm leading-7 text-mist/85">
-                    {message.transcription?.text ?? "No transcript stored yet. Voice-note transcription is handled in Phase 4.1."}
+                    {message.transcription?.text ?? "No transcript stored yet."}
                   </p>
                 </div>
               </div>

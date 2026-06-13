@@ -7,6 +7,7 @@ import { PageHeader } from "../components/PageHeader";
 import { SectionCard } from "../components/SectionCard";
 import { StatusBadge } from "../components/StatusBadge";
 import { fetchInvoices } from "../lib/api";
+import { safeArray } from "../lib/arrays";
 import { getErrorMessage } from "../lib/errors";
 import { formatCurrency, formatDateTime } from "../lib/format";
 import type { Invoice } from "../lib/types";
@@ -15,6 +16,7 @@ export function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const visibleInvoices = safeArray<Invoice>(invoices);
 
   async function loadInvoices() {
     try {
@@ -42,9 +44,9 @@ export function InvoicesPage() {
         description="Invoices generated downstream in n8n and Supabase show up here so the sales team can confirm totals, customer details, and payment follow-through."
       />
 
-      {loading && !invoices.length ? <LoadingState label="Loading invoices..." /> : null}
+      {loading && !visibleInvoices.length ? <LoadingState label="Loading invoices..." /> : null}
       {error ? <ErrorState message={error} /> : null}
-      {!loading && !error && !invoices.length ? (
+      {!loading && !error && !visibleInvoices.length ? (
         <EmptyState
           title="No invoices yet"
           description="Approved quotations and downstream automation will create invoice rows here once the sales flow starts generating payable orders."
@@ -52,7 +54,7 @@ export function InvoicesPage() {
       ) : null}
 
       <div className="grid gap-4">
-        {invoices.map((invoice) => (
+        {visibleInvoices.map((invoice) => (
           <SectionCard
             key={invoice.id}
             eyebrow={invoice.customer?.name ?? invoice.customer?.whatsapp_phone ?? "Unknown customer"}

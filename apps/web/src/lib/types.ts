@@ -27,11 +27,17 @@ export type Transcription = {
 export type AIExtraction = {
   id: string;
   message_id: string;
-  products: Array<{ sku?: string; name: string; qty: number }> | null;
+  products: AIExtractionProduct[];
   urgency: "low" | "medium" | "high" | null;
   delivery: { address?: string; date?: string } | null;
   raw_response: unknown;
   created_at: string;
+};
+
+export type AIExtractionProduct = {
+  sku?: string;
+  name: string;
+  qty: number;
 };
 
 export type InboxMessage = MessageRecord & {
@@ -57,6 +63,13 @@ export type QuotationItem = {
   product: Product | null;
 };
 
+export type QuotationInvoice = {
+  id: string;
+  invoice_number: string | null;
+  total: number | null;
+  pdf_url: string | null;
+};
+
 export type Quotation = {
   id: string;
   customer_id: string | null;
@@ -66,6 +79,7 @@ export type Quotation = {
   created_at: string;
   customer: Customer | null;
   items: QuotationItem[];
+  invoice: QuotationInvoice | null;
 };
 
 export type FollowUp = {
@@ -74,7 +88,6 @@ export type FollowUp = {
   remind_at: string | null;
   reason: string | null;
   done: boolean;
-  created_at: string;
   customer: Customer | null;
 };
 

@@ -10,7 +10,7 @@ Before writing any code, create accounts and collect API keys for:
 
 1. **GitHub** - source control for the repo.
 2. **Supabase** - https://supabase.com (free tier is enough to start).
-3. **Twilio** - https://www.twilio.com - enable WhatsApp Sandbox first, then apply for WhatsApp Business API.
+3. **Interakt** - https://interakt.shop - connect your approved WhatsApp Business sender and webhook.
 4. **Google AI Studio** - https://aistudio.google.com - for Gemini API key.
 5. **OpenAI** - https://platform.openai.com - for fallback + Whisper transcription.
 6. **n8n** - either n8n Cloud (https://n8n.io) or self-host on Railway/Render.
@@ -53,7 +53,7 @@ OrderPilot/
 │   └── web/                  # React + Vite + Tailwind dashboard
 ├── supabase/
 │   ├── migrations/           # SQL migrations
-│   └── functions/            # Edge Functions (Twilio webhook, AI calls)
+│   └── functions/            # Edge Functions (Interakt webhook, AI calls)
 ├── n8n/
 │   └── workflows/            # Exported n8n JSON workflows
 ├── docs/
@@ -74,10 +74,8 @@ SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
-# Twilio
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
+# Interakt
+INTERAKT_API_KEY=
 
 # AI
 GEMINI_API_KEY=
@@ -202,16 +200,16 @@ In Supabase Dashboard → Authentication:
 
 ---
 
-## Phase 3 - Twilio WhatsApp Integration
+## Phase 3 - Interakt WhatsApp Integration
 
-### Step 3.1 - Activate the WhatsApp Sandbox
+### Step 3.1 - Activate the Interakt sender
 
-1. Twilio Console → Messaging → Try it out → Send a WhatsApp message.
-2. Join the sandbox from your phone (`join <code>` to the sandbox number).
+1. Interakt Dashboard → connect your approved WhatsApp Business sender.
+2. Verify the sender and webhook settings in Interakt.
 
 ### Step 3.2 - Create the webhook (Supabase Edge Function)
 
-Create `supabase/functions/twilio-webhook/index.ts`:
+Create `supabase/functions/interakt-webhook/index.ts`:
 
 ```ts
 import { serve } from "https://deno.land/std/http/server.ts";
@@ -263,13 +261,13 @@ serve(async (req) => {
 Deploy:
 
 ```bash
-supabase functions deploy twilio-webhook --no-verify-jwt
+supabase functions deploy interakt-webhook --no-verify-jwt
 ```
 
-### Step 3.3 - Point Twilio at the function
+### Step 3.3 - Point Interakt at the function
 
-In the Twilio Sandbox settings, set "when a message comes in" to:
-`https://<your-project>.functions.supabase.co/twilio-webhook` (HTTP POST).
+In the Interakt webhook settings, set the incoming URL to:
+`https://<your-project>.functions.supabase.co/interakt-webhook` (HTTP POST).
 
 ---
 
@@ -340,7 +338,7 @@ Nodes in order:
 5. **Supabase node** - insert into `ai_extractions`.
 6. **Function node** - match product names against `products` table (fuzzy + sku lookup).
 7. **Supabase node** - create a `quotations` row with `status='draft'` + line items.
-8. **Twilio node** - send "Got your order, drafting a quote..." reply to the customer.
+8. **Interakt send-whatsapp node** - send the `order_received` template to the customer.
 9. **Schedule node** - if no human approves within 30 min, create a `follow_ups` row.
 
 ### Step 5.3 - Approval + send workflow
@@ -350,14 +348,14 @@ A second n8n workflow triggered when a sales rep clicks **Approve** in the dashb
 1. **Webhook from dashboard** with `quotationId`.
 2. **Supabase node** - fetch quotation + items + customer phone.
 3. **Function node** - render WhatsApp message (or PDF link).
-4. **Twilio node** - send the quotation to the customer.
+4. **Interakt send-whatsapp node** - send the `invoice_ready` template to the customer.
 5. **Supabase node** - update `quotations.status = 'sent'`.
 
 ### Step 5.4 - Follow-up workflow
 
 Cron node every 15 min:
 - Query `follow_ups` where `remind_at <= now() and done=false`.
-- Send a friendly WhatsApp nudge via Twilio.
+- Send a friendly WhatsApp nudge via Interakt.
 - Mark `done=true`.
 
 ---
@@ -419,16 +417,16 @@ cd apps/web
 pnpm install
 pnpm dev
 
-# 3. Tunnel Twilio to your local edge function (only if testing locally)
+# 3. Tunnel Interakt to your local edge function (only if testing locally)
 ngrok http 54321
-# Set the ngrok URL as the Twilio webhook temporarily.
+# Set the ngrok URL as the Interakt webhook temporarily.
 
 # 4. n8n
 docker run -p 5678:5678 n8nio/n8n
 ```
 
 End-to-end smoke test:
-1. Send a WhatsApp message to the Twilio sandbox number.
+1. Send a WhatsApp message through the Interakt sender.
 2. Watch the message appear in Supabase `messages`.
 3. Confirm `ai_extractions` row is created.
 4. Confirm a draft quotation appears in the dashboard.
@@ -440,7 +438,7 @@ End-to-end smoke test:
 
 ### Phase 8a - Initial (Lovable Deployment)
 
-Per the Readme: **deploy the prototype dashboard on Lovable** for first stakeholder demos. Supabase + Twilio + n8n already live in the cloud.
+Per the Readme: **deploy the prototype dashboard on Lovable** for first stakeholder demos. Supabase + Interakt + n8n already live in the cloud.
 
 ### Phase 8b - Production (Vercel / Netlify)
 
@@ -448,7 +446,7 @@ Per the Readme: **deploy the prototype dashboard on Lovable** for first stakehol
 2. `vercel link` → set env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`).
 3. `vercel --prod`.
 4. Promote n8n from Cloud trial to a paid plan, or self-host on Railway with a persistent volume.
-5. Apply for **Twilio WhatsApp Business API production access** (sandbox → approved sender).
+5. Verify the approved **Interakt WhatsApp Business sender** for production use.
 6. Add Sentry + Supabase logs for observability.
 
 ---
@@ -456,7 +454,7 @@ Per the Readme: **deploy the prototype dashboard on Lovable** for first stakehol
 ## Phase 9 - Hardening Checklist
 
 - [ ] RLS policies on every table, tested with a non-admin user.
-- [ ] Twilio webhook signature validation in the Edge Function.
+- [ ] Interakt webhook authenticity validation in the Edge Function.
 - [ ] Secrets only in Supabase Edge Function env (never in the frontend).
 - [ ] Rate limiting on AI calls (cost guardrail).
 - [ ] Gemini + OpenAI failover tested.
@@ -470,9 +468,9 @@ Per the Readme: **deploy the prototype dashboard on Lovable** for first stakehol
 
 | Readme item | Where it lives in this build |
 |---|---|
-| Customer sends WhatsApp message or voice note | Phase 3 (Twilio sandbox + webhook) |
-| Twilio WhatsApp API receives message | Phase 3.1 |
-| Twilio webhook forwards to OrderPilot AI backend | Phase 3.2 (Supabase Edge Function) |
+| Customer sends WhatsApp message or voice note | Phase 3 (Interakt sender + webhook) |
+| Interakt WhatsApp Business API receives message | Phase 3.1 |
+| Interakt webhook forwards to OrderPilot AI backend | Phase 3.2 (Supabase Edge Function) |
 | Message stored in Supabase | Phase 2.2 + Phase 3.2 |
 | Voice note → AI transcription | Phase 4.1 (Whisper) |
 | Gemini / OpenAI processes message | Phase 4.2 + 4.3 |
@@ -483,7 +481,7 @@ Per the Readme: **deploy the prototype dashboard on Lovable** for first stakehol
 | Dashboard updates analytics, leads, follow-ups | Phase 6.3 + Phase 5.4 |
 | Frontend: Lovable + React + Tailwind | Phase 6.1 |
 | Backend: Supabase + Postgres + Auth + RLS | Phase 2 |
-| WhatsApp: Twilio | Phase 3 |
+| WhatsApp: Interakt | Phase 3 |
 | AI: Gemini / OpenAI | Phase 4 |
 | Automation: n8n | Phase 5 |
 | Deployment: Lovable now, Vercel/Netlify later | Phase 8a + 8b |
@@ -495,7 +493,7 @@ Per the Readme: **deploy the prototype dashboard on Lovable** for first stakehol
 
 1. **Day 1-2:** Phase 0 + 1 (accounts, repo, scaffolding).
 2. **Day 3-4:** Phase 2 (Supabase schema + auth + RLS).
-3. **Day 5:** Phase 3 (Twilio sandbox + webhook).
+3. **Day 5:** Phase 3 (Interakt sender + webhook).
 4. **Day 6-7:** Phase 4 (AI extraction + voice transcription).
 5. **Day 8-10:** Phase 5 (n8n workflows).
 6. **Day 11-14:** Phase 6 (Lovable dashboard + Realtime).

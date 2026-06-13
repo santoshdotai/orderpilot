@@ -22,7 +22,7 @@ export function AppShell({ session }: { session: Session | null }) {
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-gold">AI Sales Operating System</p>
               <p className="mt-2 text-sm text-mist/75">
-                WhatsApp → Twilio → Supabase Edge Fn → DB → AI → n8n → Dashboard
+                WhatsApp → Interakt → Supabase Edge Fn → DB → AI → n8n → Dashboard
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">

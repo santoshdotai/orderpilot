@@ -1,12 +1,12 @@
 {
   "imports": {
-    "@supabase/supabase-js": "npm:@supabase/supabase-js@2",
-    "pdf-lib": "npm:pdf-lib@1.17.1"
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2",
+    "pdf-lib": "https://esm.sh/pdf-lib@1.17.1"
   },
   "compilerOptions": {
     "lib": ["deno.ns", "deno.window", "dom", "dom.iterable"]
   },
   "tasks": {
-    "check": "deno check ./create-quotation/index.ts ./send-whatsapp/index.ts ./twilio-webhook/index.ts ./invoice-engine/index.ts ./shared/ai.ts ./shared/cors.ts"
+    "check": "deno check ./create-quotation/index.ts ./send-whatsapp/index.ts ./interakt-webhook/index.ts ./invoice-engine/index.ts ./shared/ai.ts ./shared/cors.ts"
   }
 }

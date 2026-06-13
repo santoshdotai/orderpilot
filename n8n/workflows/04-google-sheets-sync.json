@@ -18,7 +18,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const entity = $json.body.entity;\nif (!entity) {\n  throw new Error('entity is required for sheet sync');\n}\nreturn [{ json: { ...$json.body, sheetName: entity === 'quotation' ? 'Quotations' : entity === 'invoice' ? 'Invoices' : entity === 'product' ? 'Products' : 'Orders' } }];"
+        "jsCode": "const body = $json.body ?? {};\nconst invoice = body.invoice ?? body;\nif (!invoice || !invoice.id) {\n  throw new Error('invoice is required for sheet sync');\n}\nreturn [{ json: { entity: 'invoice', sheetName: 'Invoices', invoice } }];"
       },
       "id": "ResolveSheetDestination",
       "name": "Resolve sheet destination",
@@ -32,14 +32,19 @@
     {
       "parameters": {
         "operation": "appendOrUpdate",
-        "documentId": "replace-with-google-sheet-id",
+        "documentId": "={{$env.GOOGLE_SHEETS_DOCUMENT_ID}}",
         "sheetName": "={{$json.sheetName}}",
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "entity": "={{$json.entity}}",
-            "entity_id": "={{$json.quotationId || $json.invoiceId || $json.productId || $json.orderId}}",
-            "payload": "={{JSON.stringify($json)}}"
+            "id": "={{$json.invoice.id}}",
+            "invoice_number": "={{$json.invoice.invoice_number}}",
+            "customer_id": "={{$json.invoice.customer_id}}",
+            "total": "={{$json.invoice.total}}",
+            "tax": "={{$json.invoice.tax}}",
+            "status": "={{$json.invoice.status}}",
+            "due_date": "={{$json.invoice.due_date}}",
+            "pdf_url": "={{$json.invoice.pdf_url}}"
           }
         }
       },
@@ -76,7 +81,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\"entity_name\": \"{{$json.entity}}\", \"entity_id\": null, \"sheet_name\": \"{{$json.sheetName}}\", \"direction\": \"push\", \"row_hash\": \"{{$json.payload || ''}}\"}"
+        "jsonBody": "={\"entity_name\": \"invoice\", \"entity_id\": \"{{$json.invoice.id}}\", \"sheet_name\": \"Invoices\", \"direction\": \"push\", \"row_hash\": \"{{JSON.stringify($json.invoice)}}\"}"
       },
       "id": "WriteSheetSyncLog",
       "name": "Write sheet sync log",

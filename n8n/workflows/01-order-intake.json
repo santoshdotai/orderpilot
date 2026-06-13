@@ -26,7 +26,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{$json.body.mediaUrl}}",
+              "leftValue": "={{$json.body.mediaUrl || $json.body.media_url || $json.body.media?.url}}",
               "rightValue": "",
               "operator": {
                 "type": "string",
@@ -91,7 +91,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are an order-extraction assistant for a B2B WhatsApp seller. Return strict JSON with keys: products[{sku?, name, qty}], urgency (low|medium|high), delivery({address?, date?}).\\n\\nCustomer message:\\n\\\"\\\"\\\"\\n{{$json.transcript || $json.body.body}}\\n\\\"\\\"\\\"\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\"\n  }\n}"
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are an order-extraction assistant for a B2B WhatsApp seller. Return strict JSON with keys: products[{sku?, name, qty}], urgency (low|medium|high), delivery({address?, date?}).\\n\\nCustomer message:\\n\\\"\\\"\\\"\\n{{$json.transcript || $json.text || $json.body.body}}\\n\\\"\\\"\\\"\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\"\n  }\n}"
       },
       "id": "GeminiExtraction",
       "name": "Gemini Extraction",
@@ -156,7 +156,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const products = $json.extraction.products || [];\nconst lineItems = products.map((product, index) => ({\n  product_name: product.name,\n  qty: Number(product.qty || 1),\n  temp_id: index + 1,\n}));\nreturn [{ json: { ...$json, lineItems } }];"
+        "jsCode": "function parseJsonArray(value) {\n  if (Array.isArray(value)) {\n    return value;\n  }\n\n  if (typeof value === 'string') {\n    try {\n      const cleaned = value.startsWith('=') ? value.slice(1).trim() : value.trim();\n      const parsed = JSON.parse(cleaned);\n      return Array.isArray(parsed) ? parsed : [];\n    } catch {\n      return [];\n    }\n  }\n\n  return [];\n}\n\nconst products = parseJsonArray($json.extraction.products);\nconst lineItems = products.map((product, index) => ({\n  product_name: product.name,\n  qty: Number(product.qty || 1),\n  temp_id: index + 1,\n}));\nreturn [{ json: { ...$json, lineItems } }];"
       },
       "id": "PrepareDraftQuote",
       "name": "Match products and build draft",
@@ -205,31 +205,31 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.twilio.com/2010-04-01/Accounts/{{$env.TWILIO_ACCOUNT_SID}}/Messages.json",
-        "sendAuthentication": true,
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpBasicAuth",
-        "sendBody": true,
-        "contentType": "form-urlencoded",
-        "bodyParameters": {
+        "url": "={{$env.SUPABASE_URL}}/functions/v1/send-whatsapp",
+        "sendHeaders": true,
+        "headerParameters": {
           "parameters": [
             {
-              "name": "From",
-              "value": "={{$env.TWILIO_WHATSAPP_FROM}}"
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
             },
             {
-              "name": "To",
-              "value": "={{$node['Webhook'].json.body.from}}"
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
             },
             {
-              "name": "Body",
-              "value": "Got your order, drafting a quote..."
+              "name": "Content-Type",
+              "value": "application/json"
             }
           ]
-        }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"to\": \"{{$node['Webhook'].json.body.from}}\", \"templateName\": \"{{$env.INTERAKT_ORDER_RECEIVED_TEMPLATE_NAME || 'order_received'}}\", \"bodyValues\": [\"{{$node['Webhook'].json.body.profileName || 'there'}}\"], \"customerId\": \"{{$node['Webhook'].json.body.customerId}}\"}"
       },
       "id": "AckCustomer",
-      "name": "Twilio ack",
+      "name": "Send order received",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -275,7 +275,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={\"customer_id\": null, \"remind_at\": \"={{new Date().toISOString()}}\", \"reason\": \"Quotation awaiting approval\", \"done\": false}"
+        "jsonBody": "={\"customer_id\": \"{{$node['Webhook'].json.body.customerId}}\", \"remind_at\": \"={{new Date().toISOString()}}\", \"reason\": \"Quotation awaiting approval\", \"done\": false}"
       },
       "id": "CreateFollowUp",
       "name": "Create follow-up row",
@@ -390,14 +390,14 @@
       "main": [
         [
           {
-            "node": "Twilio ack",
+            "node": "Send order received",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Twilio ack": {
+    "Send order received": {
       "main": [
         [
           {

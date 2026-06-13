@@ -6,6 +6,7 @@ import { LoadingState } from "../components/LoadingState";
 import { PageHeader } from "../components/PageHeader";
 import { SectionCard } from "../components/SectionCard";
 import { fetchCustomers } from "../lib/api";
+import { safeArray } from "../lib/arrays";
 import { getErrorMessage } from "../lib/errors";
 import { formatDateTime } from "../lib/format";
 import type { Customer } from "../lib/types";
@@ -14,6 +15,7 @@ export function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const visibleCustomers = safeArray<Customer>(customers);
 
   async function loadCustomers() {
     try {
@@ -38,20 +40,20 @@ export function CustomersPage() {
       <PageHeader
         eyebrow="Customers"
         title="Every WhatsApp lead in one place"
-        description="Customer records are created in Phase 3.2 when the Twilio webhook upserts `customers` before saving inbound messages."
+        description="Customer records are created in Phase 3.2 when the Interakt webhook upserts `customers` before saving inbound messages."
       />
 
-      {loading && !customers.length ? <LoadingState label="Loading customer directory..." /> : null}
+      {loading && !visibleCustomers.length ? <LoadingState label="Loading customer directory..." /> : null}
       {error ? <ErrorState message={error} /> : null}
-      {!loading && !error && !customers.length ? (
+      {!loading && !error && !visibleCustomers.length ? (
         <EmptyState
           title="No customers yet"
-          description="The customer list fills automatically as WhatsApp orders arrive through the Twilio Sandbox or production sender."
+          description="The customer list fills automatically as WhatsApp orders arrive through the Interakt sender or production webhook."
         />
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
-        {customers.map((customer) => (
+        {visibleCustomers.map((customer) => (
           <SectionCard
             key={customer.id}
             eyebrow={customer.language ?? "customer"}
